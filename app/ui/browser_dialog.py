@@ -25,13 +25,15 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSplitter,
     QTableView,
-    QTextEdit,
+    QTextBrowser,
     QVBoxLayout,
 )
 
 from app.core.soundfont_browser import (
     BrowserError,
+    GitHubTopicProvider,
     MusicalArtifactsProvider,
+    Provider,
     SoundFontResult,
     download_to_library,
 )
@@ -86,7 +88,7 @@ class _DownloadWorker(QThread):
 
 
 class _ResultsModel(QAbstractTableModel):
-    HEADERS = ("Name", "Author", "Size", "License", "Downloads")
+    HEADERS = ("Name", "Author", "Size", "License", "Downloads / Stars")
 
     def __init__(self):
         super().__init__()
@@ -145,9 +147,12 @@ class BrowserDialog(QDialog):
         self._library_dir = library_dir
         self._search_worker: _SearchWorker | None = None
         self._dl_worker: _DownloadWorker | None = None
-        self._provider = MusicalArtifactsProvider(
-            cache_dir=Path.home() / ".tunerize" / "browser-cache",
-        )
+        cache_dir = Path.home() / ".tunerize" / "browser-cache"
+        self._providers: dict[str, Provider] = {
+            "musical-artifacts.com": MusicalArtifactsProvider(cache_dir=cache_dir),
+            "github.com topic:soundfont": GitHubTopicProvider(cache_dir=cache_dir),
+        }
+        self._provider = self._providers["musical-artifacts.com"]
 
         self._build_ui()
         self._do_search("")
@@ -165,14 +170,13 @@ class BrowserDialog(QDialog):
 
         srow = QHBoxLayout()
         self.source_combo = QComboBox()
-        self.source_combo.addItem("musical-artifacts.com")
-        self.source_combo.setEnabled(False)
-        self.source_combo.setToolTip(
-            "More sources (Reddit r/soundfonts trending, GitHub) planned for v0.3."
-        )
+        for source_name in self._providers:
+            self.source_combo.addItem(source_name)
+        self.source_combo.setToolTip("Choose a public SoundFont source.")
         self.search_edit = QLineEdit()
         self.search_edit.setPlaceholderText("Search (e.g. 'piano', 'NES', 'orchestral')…")
         self.search_edit.returnPressed.connect(self._on_search_clicked)
+        self.source_combo.currentTextChanged.connect(self._on_source_changed)
         search_btn = QPushButton("Search")
         search_btn.clicked.connect(self._on_search_clicked)
 
@@ -199,7 +203,7 @@ class BrowserDialog(QDialog):
             sel.selectionChanged.connect(self._on_selection_changed)
         splitter.addWidget(self.table)
 
-        self.detail_panel = QTextEdit()
+        self.detail_panel = QTextBrowser()
         self.detail_panel.setReadOnly(True)
         self.detail_panel.setPlaceholderText(
             "Select a SoundFont to see its description, tags, and license."
@@ -248,6 +252,7 @@ class BrowserDialog(QDialog):
     def _do_search(self, query: str) -> None:
         if self._search_worker is not None and self._search_worker.isRunning():
             return
+        self._provider = self._providers[self.source_combo.currentText()]
         self.status_label.setText("Searching…")
         self.install_btn.setEnabled(False)
         self.open_web_btn.setEnabled(False)
@@ -258,6 +263,9 @@ class BrowserDialog(QDialog):
         self._search_worker.start()
 
     def _on_search_clicked(self) -> None:
+        self._do_search(self.search_edit.text().strip())
+
+    def _on_source_changed(self) -> None:
         self._do_search(self.search_edit.text().strip())
 
     @Slot(list)
@@ -358,13 +366,21 @@ class BrowserDialog(QDialog):
         self.cancel_btn.setEnabled(False)
         self.progress_bar.setVisible(False)
         self.status_label.setText(f"Installed: {path.name}")
-        self.sf_installed.emit(path)
-        QMessageBox.information(
-            self,
-            "Installed",
-            f"{path.name} was added to your soundfonts folder.\n\n"
-            "It's now available in the main SoundFont dropdown.",
-        )
+        if Path(path).suffix.lower() in (".sf2", ".sf3"):
+            self.sf_installed.emit(path)
+            QMessageBox.information(
+                self,
+                "Installed",
+                f"{path.name} was added to your soundfonts folder.\n\n"
+                "It's now available in the main SoundFont dropdown.",
+            )
+        else:
+            QMessageBox.information(
+                self,
+                "Bundle downloaded",
+                f"{path.name} was saved to your soundfonts folder.\n\n"
+                "Unpack it, then import any .sf2 or .sf3 files inside.",
+            )
 
     @Slot(str)
     def _on_download_failed(self, err: str) -> None:

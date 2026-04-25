@@ -21,7 +21,7 @@ One window, one button, no cloud.
 ## Features
 
 - **Built-in chiptune engines** — NES-style (2 pulse + triangle + noise) and Game Boy DMG-style (2 pulse + custom wave + noise) synths ship in the app. Zero install, instant retro.
-- **Online SoundFont browser** — search and install SF2s from public libraries (musical-artifacts.com, more sources coming) without leaving the app. License + author shown for every result.
+- **Online SoundFont browser** — search and install SF2s from public libraries (musical-artifacts.com plus GitHub `topic:soundfont`) without leaving the app. License + author shown for every result.
 - **Bring-your-own SoundFonts** — Drop `.sf2` / `.sf3` into `soundfonts/`; Tunerize scans, validates, lists them, and keeps your recent picks at the top.
 - **Drag-and-drop input** — Drop supported audio files directly on the window, or use the file picker.
 - **One-click conversion** — Open audio, pick mode, hit Convert. WAV out.
@@ -62,7 +62,7 @@ python -m app.main
 
 Three options:
 
-1. **Use the built-in browser** *(easiest)* — Open Tunerize, switch to SoundFont mode, click **Browse Online…**. Searches musical-artifacts.com, shows license per result, downloads & installs in one click.
+1. **Use the built-in browser** *(easiest)* — Open Tunerize, switch to SoundFont mode, click **Browse Online…**. Searches musical-artifacts.com and GitHub `topic:soundfont`, shows license per result, and downloads in one click. GitHub repositories are saved as ZIP bundles; unpack them and import any `.sf2` / `.sf3` files inside.
 2. **Drop your own** into `soundfonts/` (`.sf2` / `.sf3`). Restart or hit ↻ to re-scan.
 3. **Recommended grabs**:
    - **FluidR3 GM** (MIT, the FluidSynth default, ~140MB) — search the browser for "FluidR3"

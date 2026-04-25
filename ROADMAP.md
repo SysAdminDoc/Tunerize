@@ -37,7 +37,8 @@
 - [x] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)
   - Completed 2026-04-25: Advanced settings now control pulse 1, pulse 2, triangle, and noise voice volume/mute/solo before rendering.
 - [ ] **Reddit r/soundfonts** browser provider (trending community packs)
-- [ ] **GitHub topic:soundfont** browser provider
+- [x] **GitHub topic:soundfont** browser provider
+  - Completed 2026-04-25: Browser source selector now searches GitHub repositories tagged `topic:soundfont`, shows license/star metadata, and downloads repositories as ZIP bundles.
 
 ## v0.4.0 — SoundFont editor (bundled)
 - [ ] **Bundle Polyphone in installer** (GPL, ~25MB) — full SF2 editor, no external download

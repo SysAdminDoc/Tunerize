@@ -8,8 +8,10 @@ import pytest
 
 from app.core.soundfont_browser import (
     BrowserError,
+    GitHubTopicProvider,
     MusicalArtifactsProvider,
     SoundFontResult,
+    _github_query,
     download_to_library,
 )
 
@@ -156,6 +158,82 @@ def test_provider_caches_to_disk(tmp_path):
     assert session.get.call_count == 1  # cache hit on the second call
 
 
+def _github_repo(**overrides):
+    base = {
+        "full_name": "chipmusic/game-soundfonts",
+        "name": "game-soundfonts",
+        "owner": {"login": "chipmusic"},
+        "description": "Curated game SoundFonts.",
+        "license": {"spdx_id": "MIT", "name": "MIT License"},
+        "html_url": "https://github.com/chipmusic/game-soundfonts",
+        "zipball_url": "https://api.github.com/repos/chipmusic/game-soundfonts/zipball/main",
+        "default_branch": "main",
+        "stargazers_count": 512,
+        "language": "Python",
+    }
+    base.update(overrides)
+    return base
+
+
+def test_github_provider_search_parses_repositories():
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(json_data={"items": [_github_repo()]})
+
+    provider = GitHubTopicProvider(session=session)
+    results = provider.search("nes")
+
+    assert len(results) == 1
+    r = results[0]
+    assert r.source == "github.com"
+    assert r.name == "chipmusic/game-soundfonts"
+    assert r.author == "chipmusic"
+    assert r.license == "MIT"
+    assert r.download_count == 512
+    assert r.download_name == "chipmusic - game-soundfonts.zip"
+    assert "bundle" in r.tags
+
+
+def test_github_provider_search_query_uses_soundfont_topic():
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(json_data={"items": []})
+
+    provider = GitHubTopicProvider(session=session)
+    provider.search("piano")
+
+    _, kwargs = session.get.call_args
+    assert kwargs["params"]["q"] == "topic:soundfont piano in:name,description,readme"
+    assert kwargs["params"]["sort"] == "stars"
+
+
+def test_github_provider_caches_to_disk(tmp_path):
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(json_data={"items": [_github_repo()]})
+
+    provider = GitHubTopicProvider(session=session, cache_dir=tmp_path / "cache")
+    r1 = provider.search("nes")
+    r2 = provider.search("nes")
+
+    assert r1 == r2
+    assert session.get.call_count == 1
+
+
+def test_github_provider_raises_on_bad_shape():
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(json_data=[])
+
+    provider = GitHubTopicProvider(session=session)
+    with pytest.raises(BrowserError, match="GitHub"):
+        provider.search()
+
+
+def test_github_query_without_terms_only_uses_topic():
+    assert _github_query("") == "topic:soundfont"
+
+
 def _valid_sf2_bytes() -> bytes:
     """Smallest byte sequence that passes our RIFF/sfbk validation."""
     return b"RIFF" + struct.pack("<I", 4) + b"sfbk" + b"\x00" * 32
@@ -269,6 +347,31 @@ def test_download_handles_name_collision(tmp_path):
     p2 = download_to_library(result, tmp_path / "lib", session=session)
     assert p1 != p2
     assert p1.exists() and p2.exists()
+
+
+def test_download_uses_explicit_bundle_name(tmp_path):
+    bundle = b"PK\x03\x04 fake zip"
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(content=bundle)
+    result = SoundFontResult(
+        source="github.com",
+        name="owner/repo",
+        author="owner",
+        description="",
+        license="MIT",
+        file_url="https://api.github.com/repos/owner/repo/zipball/main",
+        file_size_bytes=len(bundle),
+        tags=("soundfont", "github", "bundle"),
+        download_count=10,
+        detail_url="https://github.com/owner/repo",
+        download_name="owner - repo.zip",
+    )
+
+    path = download_to_library(result, tmp_path / "lib", session=session)
+
+    assert path.name == "owner - repo.zip"
+    assert path.read_bytes() == bundle
 
 
 def test_safe_int_handles_garbage():

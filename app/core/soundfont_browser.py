@@ -1,11 +1,11 @@
 """Online SoundFont library browser — search public libraries, download into the local SF2 folder.
 
-v0.2.0 ships one provider:
+v0.2.0 started with one provider:
     - musical-artifacts.com  (REST/JSON, per-artifact license, direct file URL)
+    - github.com topic:soundfont (repository search, archive downloads)
 
 The `Provider` protocol is the integration point. Future providers can include
-Reddit r/soundfonts trending, Polyphone if/when their API opens, and a GitHub
-topic search for `topic:soundfont`.
+Reddit r/soundfonts trending and Polyphone if/when their API opens.
 """
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import unquote, urlencode, urlparse
+from urllib.parse import quote, unquote, urlencode, urlparse
 
 import requests
 
@@ -45,6 +45,7 @@ class SoundFontResult:
     download_count: int | None
     detail_url: str                  # human-readable web page
     file_hash: str | None = None
+    download_name: str | None = None
 
 
 class Provider(Protocol):
@@ -135,12 +136,7 @@ class MusicalArtifactsProvider:
 
     @staticmethod
     def _looks_like_soundfont(r: SoundFontResult) -> bool:
-        url = r.file_url.lower()
-        if any(url.endswith(ext) for ext in (".sf2", ".sf3", ".sfz")):
-            return True
-        # Some artifacts ship .zip / .7z bundles — keep when soundfont-tagged
-        tags_lower = tuple(t.lower() for t in r.tags)
-        return any(t in tags_lower for t in ("soundfont", "sf2", "sf3"))
+        return _looks_like_soundfont(r)
 
     def _cache_key(self, endpoint: str, params: dict) -> str:
         raw = endpoint + "?" + urlencode(sorted(params.items()))
@@ -163,6 +159,127 @@ class MusicalArtifactsProvider:
         if self._cache_dir is None:
             return
         path = self._cache_dir / f"{key}.json"
+        with suppress(OSError):
+            path.write_text(json.dumps(data), encoding="utf-8")
+
+
+# ---------- github.com ----------
+
+class GitHubTopicProvider:
+    """Search public GitHub repositories tagged `soundfont`.
+
+    Results install as repository ZIP bundles because GitHub repositories can
+    contain many SoundFont files. The user can unpack the bundle and import any
+    `.sf2` / `.sf3` files inside.
+    """
+
+    name = "github.com"
+    API_URL = "https://api.github.com/search/repositories"
+
+    def __init__(
+        self,
+        session: requests.Session | None = None,
+        cache_dir: Path | None = None,
+        cache_ttl_seconds: int = 3600,
+    ):
+        self._session = session or requests.Session()
+        self._session.headers.setdefault("User-Agent", USER_AGENT)
+        self._session.headers.setdefault("Accept", "application/vnd.github+json")
+        self._cache_dir = cache_dir
+        self._cache_ttl = cache_ttl_seconds
+        if cache_dir is not None:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def search(self, query: str = "", *, limit: int = 30) -> list[SoundFontResult]:
+        params = {
+            "q": _github_query(query),
+            "sort": "stars",
+            "order": "desc",
+            "per_page": str(min(max(limit, 1), 50)),
+        }
+        cache_key = self._cache_key("repositories", params)
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            data = cached
+        else:
+            try:
+                r = self._session.get(self.API_URL, params=params, timeout=DEFAULT_TIMEOUT)
+                r.raise_for_status()
+            except requests.RequestException as e:
+                raise BrowserError(f"GitHub repository search failed: {e}") from e
+            try:
+                data = r.json()
+            except ValueError as e:
+                raise BrowserError(f"GitHub returned non-JSON: {e}") from e
+            self._set_cache(cache_key, data)
+
+        items = data.get("items") if isinstance(data, dict) else None
+        if not isinstance(items, list):
+            raise BrowserError("Unexpected response shape from GitHub")
+
+        results: list[SoundFontResult] = []
+        for item in items[:limit]:
+            full_name = item.get("full_name") or item.get("name") or "(unnamed)"
+            owner = item.get("owner") or {}
+            owner_login = owner.get("login") if isinstance(owner, dict) else None
+            branch = item.get("default_branch") or "main"
+            archive_url = item.get("zipball_url") or ""
+            if not archive_url and "/" in full_name:
+                archive_url = f"https://api.github.com/repos/{full_name}/zipball/{quote(branch, safe='')}"
+
+            license_info = item.get("license")
+            license_label = "Unknown"
+            if isinstance(license_info, dict):
+                license_label = license_info.get("spdx_id") or license_info.get("name") or "Unknown"
+
+            tags = ("soundfont", "github", "bundle")
+            language = item.get("language")
+            if language:
+                tags = (*tags, str(language))
+
+            description = (item.get("description") or "").strip()
+            results.append(
+                SoundFontResult(
+                    source=self.name,
+                    name=full_name,
+                    author=owner_login,
+                    description=(
+                        description
+                        or "GitHub repository tagged with topic:soundfont. Downloads as a ZIP bundle."
+                    ),
+                    license=license_label,
+                    file_url=archive_url,
+                    file_size_bytes=None,
+                    tags=tags,
+                    download_count=_safe_int(item.get("stargazers_count")),
+                    detail_url=item.get("html_url") or "",
+                    download_name=f"{_safe_filename(full_name.replace('/', ' - '))}.zip",
+                )
+            )
+
+        return [r for r in results if r.file_url and _looks_like_soundfont(r)]
+
+    def _cache_key(self, endpoint: str, params: dict) -> str:
+        raw = endpoint + "?" + urlencode(sorted(params.items()))
+        return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+    def _get_cache(self, key: str):
+        if self._cache_dir is None:
+            return None
+        path = self._cache_dir / f"github-{key}.json"
+        if not path.exists():
+            return None
+        if time.time() - path.stat().st_mtime > self._cache_ttl:
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def _set_cache(self, key: str, data) -> None:
+        if self._cache_dir is None:
+            return
+        path = self._cache_dir / f"github-{key}.json"
         with suppress(OSError):
             path.write_text(json.dumps(data), encoding="utf-8")
 
@@ -195,7 +312,7 @@ def download_to_library(
 
     total = result.file_size_bytes or _content_length(r)
 
-    filename = _filename_from_url(result.file_url) or (_safe_filename(result.name) + ".sf2")
+    filename = result.download_name or _filename_from_url(result.file_url) or (_safe_filename(result.name) + ".sf2")
     dest = library_dir / filename
     if dest.exists():
         i = 1
@@ -249,6 +366,22 @@ def _safe_filename(name: str) -> str:
     keep = "-_.() "
     out = "".join(c for c in name if c.isalnum() or c in keep).strip()
     return out or "soundfont"
+
+
+def _looks_like_soundfont(r: SoundFontResult) -> bool:
+    url = r.file_url.lower()
+    if any(url.endswith(ext) for ext in (".sf2", ".sf3", ".sfz", ".zip", ".7z")):
+        return True
+    tags_lower = tuple(t.lower() for t in r.tags)
+    return any(t in tags_lower for t in ("soundfont", "sf2", "sf3"))
+
+
+def _github_query(query: str) -> str:
+    terms = ["topic:soundfont"]
+    if query:
+        terms.append(query)
+        terms.append("in:name,description,readme")
+    return " ".join(terms)
 
 
 def _safe_int(value) -> int | None:

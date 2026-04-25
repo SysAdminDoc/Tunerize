@@ -9,6 +9,7 @@ All notable changes to Tunerize are documented here. Format follows [Keep a Chan
 - Recent SoundFont persistence: the last five used or installed `.sf2` / `.sf3` files appear first in the SoundFont dropdown when still present in the local library.
 - Chiptune voice mixer in Advanced settings with per-voice volume, mute, and solo controls for pulse 1, pulse 2, triangle, and noise.
 - Game Boy DMG chiptune engine option with two pulse voices, a 4-bit custom wave channel, and noise.
+- GitHub `topic:soundfont` browser source with license-aware repository results and ZIP bundle downloads.
 
 ### Changed
 - Conversion now locks input/settings controls while work is running and treats user cancellation as a normal stopped state instead of a critical failure dialog.
