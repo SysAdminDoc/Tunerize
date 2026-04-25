@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from app.core.pipeline import PipelineConfig
+from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES
+from app.core.pipeline import PipelineConfig, _chiptune_suffix
 
 
 def test_config_requires_sf2_path_when_not_chiptune(tmp_path):
@@ -52,6 +53,7 @@ def test_config_defaults():
     assert cfg.sample_rate == 44100
     assert cfg.stem_separate is False
     assert cfg.min_note_ms == 58
+    assert cfg.chiptune_engine == ENGINE_NES
     assert cfg.chiptune_voice_volumes == (1.0, 1.0, 1.0, 1.0)
     assert cfg.chiptune_voice_mutes == (False, False, False, False)
     assert cfg.chiptune_voice_solos == (False, False, False, False)
@@ -64,4 +66,26 @@ def test_config_validates_chiptune_voice_control_lengths(tmp_path):
             output_dir=tmp_path / "out",
             use_chiptune_engine=True,
             chiptune_voice_volumes=(1.0, 1.0),  # type: ignore[arg-type]
+        )
+
+
+def test_config_accepts_gameboy_engine(tmp_path):
+    cfg = PipelineConfig(
+        audio_path=tmp_path / "in.mp3",
+        output_dir=tmp_path / "out",
+        use_chiptune_engine=True,
+        chiptune_engine=ENGINE_GAME_BOY,
+    )
+
+    assert cfg.chiptune_engine == ENGINE_GAME_BOY
+    assert _chiptune_suffix(cfg.chiptune_engine) == "gameboy"
+
+
+def test_config_rejects_unknown_chiptune_engine(tmp_path):
+    with pytest.raises(ValueError, match="Unsupported chiptune_engine"):
+        PipelineConfig(
+            audio_path=tmp_path / "in.mp3",
+            output_dir=tmp_path / "out",
+            use_chiptune_engine=True,
+            chiptune_engine="sid",
         )

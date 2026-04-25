@@ -30,7 +30,8 @@
   - Completed 2026-04-25: persists the last five used or installed `.sf2` / `.sf3` files and shows available matches first.
 - [x] Drag-and-drop audio onto window
   - Completed 2026-04-25: accepts supported audio files anywhere on the main window and blocks drops during conversion.
-- [ ] **Game Boy DMG engine** — 4-voice variant (2 pulse, custom waveform, noise)
+- [x] **Game Boy DMG engine** — 4-voice variant (2 pulse, custom waveform, noise)
+  - Completed 2026-04-25: Chiptune mode now offers a Game Boy DMG engine with two pulse channels, a 4-bit wave channel, noise, and the same mixer controls.
 - [ ] **SNES SPC700-style engine** — 8-voice with sample playback
 - [ ] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis
 - [x] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)

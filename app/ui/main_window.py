@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QScrollArea,
     QSlider,
     QSpinBox,
     QToolButton,
@@ -30,6 +31,7 @@ from PySide6.QtWidgets import (
 
 from app import __version__
 from app.core.audio_io import SUPPORTED_INPUT_EXTS
+from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES
 from app.core.pipeline import ConversionPipeline, PipelineConfig
 from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
 from app.core.soundfonts import SoundFontLibrary
@@ -102,6 +104,7 @@ class MainWindow(QMainWindow):
         self._worker: _Worker | None = None
         self._busy = False
         self._has_soundfonts = False
+        self.voice_name_labels: list[QLabel] = []
         self.voice_volume_sliders: list[QSlider] = []
         self.voice_value_labels: list[QLabel] = []
         self.voice_mute_checks: list[QCheckBox] = []
@@ -115,8 +118,8 @@ class MainWindow(QMainWindow):
     # ---------- UI construction ----------
 
     def _build_ui(self) -> None:
-        central = QWidget()
-        root = QVBoxLayout(central)
+        content = QWidget()
+        root = QVBoxLayout(content)
         root.setContentsMargins(22, 22, 22, 22)
         root.setSpacing(12)
 
@@ -142,7 +145,11 @@ class MainWindow(QMainWindow):
         root.addLayout(self._progress_section())
         root.addWidget(self._log_section(), 1)
 
-        self.setCentralWidget(central)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(content)
+        self.setCentralWidget(scroll)
 
     def _mode_section(self) -> QWidget:
         frame = QFrame()
@@ -262,9 +269,20 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Min note length:"), 4, 0)
         layout.addWidget(self.min_note_spin, 4, 1)
 
+        engine_label = QLabel("Chip engine:")
+        self.engine_combo = QComboBox()
+        self.engine_combo.addItem("NES APU-style", ENGINE_NES)
+        self.engine_combo.addItem("Game Boy DMG", ENGINE_GAME_BOY)
+        self.engine_combo.setToolTip("Choose the built-in chip model used by Chiptune mode.")
+        self.engine_combo.currentIndexChanged.connect(lambda _idx: self._update_chiptune_engine_labels())
+        layout.addWidget(engine_label, 5, 0)
+        layout.addWidget(self.engine_combo, 5, 1)
+        self._chiptune_mixer_widgets.extend([engine_label, self.engine_combo])
+
         mixer_label = QLabel("Chiptune voice mixer:")
         mixer_label.setToolTip("Applies only to the built-in chiptune renderer.")
-        layout.addWidget(mixer_label, 5, 0, 1, 2)
+        layout.addWidget(mixer_label, 6, 0, 1, 2)
+        self._chiptune_mixer_widgets.append(mixer_label)
 
         mixer_widget = QWidget()
         mixer_layout = QGridLayout(mixer_widget)
@@ -287,6 +305,7 @@ class MainWindow(QMainWindow):
             volume.setSingleStep(5)
             volume.setPageStep(10)
             volume.setMinimumWidth(180)
+            volume.setMaximumWidth(520)
             volume.setAccessibleName(f"{voice_name} volume")
             volume.setToolTip("Voice volume, 100% preserves the default mix.")
             value_label = QLabel("100%")
@@ -305,12 +324,14 @@ class MainWindow(QMainWindow):
             mixer_layout.addWidget(solo, row_offset, 4)
 
             self.voice_volume_sliders.append(volume)
+            self.voice_name_labels.append(name_label)
             self.voice_value_labels.append(value_label)
             self.voice_mute_checks.append(mute)
             self.voice_solo_checks.append(solo)
             self._chiptune_mixer_widgets.extend([name_label, volume, value_label, mute, solo])
 
-        layout.addWidget(mixer_widget, 6, 0, 1, 2)
+        layout.addWidget(mixer_widget, 7, 0, 1, 2)
+        self._update_chiptune_engine_labels()
 
         adv.setContentLayout(layout)
         return adv
@@ -591,6 +612,7 @@ class MainWindow(QMainWindow):
                 min_note_ms=self.min_note_spin.value(),
                 stem_separate=self.demucs_check.isChecked(),
                 export_midi=self.export_midi_check.isChecked(),
+                chiptune_engine=self._selected_chiptune_engine(),
                 chiptune_voice_volumes=voice_volumes,
                 chiptune_voice_mutes=voice_mutes,
                 chiptune_voice_solos=voice_solos,
@@ -672,3 +694,14 @@ class MainWindow(QMainWindow):
             volume > 0.0 and not muted
             for volume, muted in zip(volumes, mutes, strict=True)
         )
+
+    def _selected_chiptune_engine(self) -> str:
+        return self.engine_combo.currentData() or ENGINE_NES
+
+    def _update_chiptune_engine_labels(self) -> None:
+        if self._selected_chiptune_engine() == ENGINE_GAME_BOY:
+            names = ("Pulse 1 lead", "Pulse 2 harmony", "Wave channel", "Noise drums")
+        else:
+            names = ("Pulse 1 lead", "Pulse 2 harmony", "Triangle bass", "Noise drums")
+        for label, name in zip(self.voice_name_labels, names, strict=True):
+            label.setText(name)

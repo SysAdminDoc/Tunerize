@@ -6,7 +6,7 @@ import pretty_midi
 import pytest
 import soundfile as sf
 
-from app.core.chiptune import ChiptuneError, _assign_voices, _voice_mixer_gains, render
+from app.core.chiptune import ENGINE_GAME_BOY, ChiptuneError, _assign_voices, _voice_mixer_gains, render
 
 
 def test_render_produces_nonsilent_wav(tmp_path, synthetic_midi):
@@ -61,6 +61,21 @@ def test_render_accepts_path(tmp_path, synthetic_midi):
     out_path = tmp_path / "out.wav"
     render(midi_path, out_path)
     assert out_path.exists()
+
+
+def test_render_gameboy_engine_produces_nonsilent_wav(tmp_path, synthetic_midi):
+    out = tmp_path / "gameboy.wav"
+    render(synthetic_midi, out, engine=ENGINE_GAME_BOY)
+
+    audio, sr = sf.read(str(out))
+    assert sr == 44100
+    assert audio.shape[1] == 2
+    assert np.max(np.abs(audio)) > 0.01
+
+
+def test_render_rejects_unknown_engine(tmp_path, synthetic_midi):
+    with pytest.raises(ChiptuneError, match="Unsupported chiptune engine"):
+        render(synthetic_midi, tmp_path / "bad.wav", engine="sid")
 
 
 def test_render_respects_cancel(tmp_path, synthetic_midi):

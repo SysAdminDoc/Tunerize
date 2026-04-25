@@ -1,9 +1,10 @@
-"""Built-in NES-style chiptune renderer.
+"""Built-in chiptune renderers.
 
 Synthesizes pulse (square with selectable duty cycle), triangle, and noise
-waveforms directly from a MIDI sequence — no SoundFont required. Approximates
-the Nintendo NES APU: 2 pulse channels + 1 triangle + 1 noise, 4-voice
-polyphony with pitch-aware allocation and note stealing on overflow.
+waveforms directly from a MIDI sequence — no SoundFont required. The default
+engine approximates the Nintendo NES APU: 2 pulse channels + 1 triangle + 1
+noise. The Game Boy DMG variant uses the same voice allocator with 2 pulse
+channels + 1 4-bit custom wavetable + 1 noise channel.
 """
 from __future__ import annotations
 
@@ -16,6 +17,9 @@ import pretty_midi
 import soundfile as sf
 
 SAMPLE_RATE = 44100
+ENGINE_NES = "nes"
+ENGINE_GAME_BOY = "gameboy"
+SUPPORTED_ENGINES = (ENGINE_NES, ENGINE_GAME_BOY)
 
 V_PULSE_LEAD = 0
 V_PULSE_HARM = 1
@@ -26,6 +30,11 @@ DEFAULT_VOICE_VOLUMES = (1.0, 1.0, 1.0, 1.0)
 DEFAULT_VOICE_MUTES = (False, False, False, False)
 DEFAULT_VOICE_SOLOS = (False, False, False, False)
 BASE_VOICE_GAINS = (0.28, 0.22, 0.32, 0.22)
+GAME_BOY_WAVETABLE_4BIT = np.array(
+    [8, 10, 12, 14, 15, 14, 12, 10, 8, 6, 4, 2, 1, 2, 4, 6,
+     8, 11, 14, 15, 14, 11, 8, 5, 2, 1, 2, 5, 8, 7, 8, 9],
+    dtype=np.float32,
+)
 
 
 class ChiptuneError(Exception):
@@ -61,6 +70,11 @@ def _noise(n_samples: int, seed: int) -> np.ndarray:
     return rng.uniform(-1.0, 1.0, n_samples).astype(np.float32)
 
 
+def _quantize_4bit(samples: np.ndarray) -> np.ndarray:
+    levels = np.round((np.clip(samples, -1.0, 1.0) + 1.0) * 7.5)
+    return ((levels / 7.5) - 1.0).astype(np.float32)
+
+
 def _wave_pulse_lead(t: np.ndarray, freq: float) -> np.ndarray:
     return _square(t, freq, 0.5)
 
@@ -71,6 +85,21 @@ def _wave_pulse_harm(t: np.ndarray, freq: float) -> np.ndarray:
 
 def _wave_triangle(t: np.ndarray, freq: float) -> np.ndarray:
     return _triangle(t, freq)
+
+
+def _wave_gameboy_pulse_1(t: np.ndarray, freq: float) -> np.ndarray:
+    return _quantize_4bit(_square(t, freq, 0.125))
+
+
+def _wave_gameboy_pulse_2(t: np.ndarray, freq: float) -> np.ndarray:
+    return _quantize_4bit(_square(t, freq, 0.5))
+
+
+def _wave_gameboy_custom(t: np.ndarray, freq: float) -> np.ndarray:
+    phase = (t * freq) % 1.0
+    indices = np.floor(phase * len(GAME_BOY_WAVETABLE_4BIT)).astype(np.int32)
+    values = GAME_BOY_WAVETABLE_4BIT[indices]
+    return ((values - 7.5) / 7.5).astype(np.float32)
 
 
 # ---------- envelopes ----------
@@ -106,6 +135,10 @@ def _env_triangle(n: int, sr: int) -> np.ndarray:
     return _adsr(n, sr, attack_ms=4.0, decay_ms=10.0, sustain=0.85, release_ms=80.0)
 
 
+def _env_gameboy_wave(n: int, sr: int) -> np.ndarray:
+    return _adsr(n, sr, attack_ms=1.0, decay_ms=18.0, sustain=0.65, release_ms=34.0)
+
+
 def _env_drum(n: int, sr: int) -> np.ndarray:
     decay_samples = min(n, max(1, int(0.18 * sr)))
     env = np.zeros(n, dtype=np.float32)
@@ -115,7 +148,14 @@ def _env_drum(n: int, sr: int) -> np.ndarray:
 
 # ---------- voice allocation ----------
 
-def _voice_label(idx: int) -> str:
+def _voice_label(idx: int, engine: str = ENGINE_NES) -> str:
+    if engine == ENGINE_GAME_BOY:
+        return (
+            "Pulse 1 (lead, 12.5% duty)",
+            "Pulse 2 (harmony, 50% duty)",
+            "Wave channel (custom 4-bit)",
+            "Noise (drums)",
+        )[idx]
     return (
         "Pulse 1 (lead, 50% duty)",
         "Pulse 2 (harmony, 25% duty)",
@@ -217,20 +257,14 @@ def _render_voice(
     total_samples: int,
     sample_rate: int,
     *,
+    engine: str = ENGINE_NES,
     gain_multiplier: float = 1.0,
 ) -> np.ndarray:
     buf = np.zeros(total_samples, dtype=np.float32)
     if not notes or gain_multiplier <= 0.0:
         return buf
 
-    if voice_idx == V_PULSE_LEAD:
-        wave_fn, env_fn, gain = _wave_pulse_lead, _env_pulse, BASE_VOICE_GAINS[voice_idx]
-    elif voice_idx == V_PULSE_HARM:
-        wave_fn, env_fn, gain = _wave_pulse_harm, _env_pulse, BASE_VOICE_GAINS[voice_idx]
-    elif voice_idx == V_TRIANGLE:
-        wave_fn, env_fn, gain = _wave_triangle, _env_triangle, BASE_VOICE_GAINS[voice_idx]
-    else:
-        wave_fn, env_fn, gain = None, _env_drum, BASE_VOICE_GAINS[voice_idx]
+    wave_fn, env_fn, gain = _voice_patch(engine, voice_idx)
 
     for note in notes:
         start = int(note.start * sample_rate)
@@ -244,6 +278,8 @@ def _render_voice(
         if voice_idx == V_NOISE:
             seed = (note.pitch * 1009 + start) & 0xFFFFFFFF
             samples = _noise(n, seed=seed)
+            if engine == ENGINE_GAME_BOY:
+                samples = _quantize_4bit(samples)
         else:
             t = np.arange(n, dtype=np.float32) / sample_rate
             samples = wave_fn(t, note.freq_hz)
@@ -254,6 +290,25 @@ def _render_voice(
     return buf
 
 
+def _voice_patch(engine: str, voice_idx: int):
+    if engine == ENGINE_GAME_BOY:
+        if voice_idx == V_PULSE_LEAD:
+            return _wave_gameboy_pulse_1, _env_pulse, BASE_VOICE_GAINS[voice_idx]
+        if voice_idx == V_PULSE_HARM:
+            return _wave_gameboy_pulse_2, _env_pulse, BASE_VOICE_GAINS[voice_idx]
+        if voice_idx == V_TRIANGLE:
+            return _wave_gameboy_custom, _env_gameboy_wave, BASE_VOICE_GAINS[voice_idx]
+        return None, _env_drum, BASE_VOICE_GAINS[voice_idx]
+
+    if voice_idx == V_PULSE_LEAD:
+        return _wave_pulse_lead, _env_pulse, BASE_VOICE_GAINS[voice_idx]
+    if voice_idx == V_PULSE_HARM:
+        return _wave_pulse_harm, _env_pulse, BASE_VOICE_GAINS[voice_idx]
+    if voice_idx == V_TRIANGLE:
+        return _wave_triangle, _env_triangle, BASE_VOICE_GAINS[voice_idx]
+    return None, _env_drum, BASE_VOICE_GAINS[voice_idx]
+
+
 # ---------- public render ----------
 
 def render(
@@ -261,6 +316,7 @@ def render(
     output_wav_path: Path,
     *,
     sample_rate: int = SAMPLE_RATE,
+    engine: str = ENGINE_NES,
     voice_volumes: Sequence[float] | None = None,
     voice_mutes: Sequence[bool] | None = None,
     voice_solos: Sequence[bool] | None = None,
@@ -273,6 +329,8 @@ def render(
     Output is normalized to -3 dB to prevent clipping.
     """
     log = log or (lambda _m: None)
+    if engine not in SUPPORTED_ENGINES:
+        raise ChiptuneError(f"Unsupported chiptune engine: {engine}")
     if isinstance(midi, (str, Path)):
         midi = pretty_midi.PrettyMIDI(str(midi))
 
@@ -285,19 +343,21 @@ def render(
     end_times = [n.end for vlist in voices for n in vlist]
     total_seconds = (max(end_times) if end_times else 0.0) + 1.0
     total_samples = int(total_seconds * sample_rate)
-    log(f"  -> {note_count} notes across 4 voices, {total_seconds:.1f}s")
+    engine_label = "Game Boy DMG" if engine == ENGINE_GAME_BOY else "NES"
+    log(f"  -> {note_count} notes across 4 voices, {engine_label}, {total_seconds:.1f}s")
 
     mix = np.zeros(total_samples, dtype=np.float32)
     for v_idx, notes in enumerate(voices):
         if cancel_check is not None and cancel_check():
             raise ChiptuneError("Render cancelled by user.")
         voice_status = "muted" if voice_gains[v_idx] <= 0.0 else f"{voice_gains[v_idx] * 100:.0f}%"
-        log(f"  -> {_voice_label(v_idx)}: {len(notes)} notes, {voice_status}")
+        log(f"  -> {_voice_label(v_idx, engine)}: {len(notes)} notes, {voice_status}")
         mix += _render_voice(
             v_idx,
             notes,
             total_samples,
             sample_rate,
+            engine=engine,
             gain_multiplier=voice_gains[v_idx],
         )
 

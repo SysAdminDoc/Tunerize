@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QMimeData, QUrl
 
+from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES
 from app.core.recent_soundfonts import remember_soundfont
 from app.ui.main_window import MainWindow
 
@@ -55,6 +56,7 @@ def test_main_window_chiptune_mixer_mode_state(qtbot, tmp_path):
     qtbot.addWidget(window)
 
     assert all(widget.isEnabled() for widget in window._chiptune_mixer_widgets)
+    assert window._selected_chiptune_engine() == ENGINE_NES
     assert window._chiptune_voice_settings()[0] == (1.0, 1.0, 1.0, 1.0)
 
     window.mode_sf2.setChecked(True)
@@ -73,6 +75,16 @@ def test_main_window_chiptune_mixer_detects_silent_settings(qtbot, tmp_path):
     window.voice_solo_checks[0].setChecked(True)
 
     assert window._chiptune_mixer_has_audible_voice() is True
+
+
+def test_main_window_engine_selector_updates_voice_labels(qtbot, tmp_path):
+    window = MainWindow(soundfonts_dir=tmp_path / "soundfonts", settings_path=tmp_path / "settings.json")
+    qtbot.addWidget(window)
+
+    window.engine_combo.setCurrentIndex(window.engine_combo.findData(ENGINE_GAME_BOY))
+
+    assert window._selected_chiptune_engine() == ENGINE_GAME_BOY
+    assert window.voice_name_labels[2].text() == "Wave channel"
 
 
 def _write_fake_sf2(path: Path) -> Path:

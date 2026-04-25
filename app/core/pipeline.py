@@ -36,6 +36,7 @@ class PipelineConfig:
     stem_separate: bool = False
     export_midi: bool = True
     sample_rate: int = 44100
+    chiptune_engine: str = chiptune.ENGINE_NES
     chiptune_voice_volumes: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
     chiptune_voice_mutes: tuple[bool, bool, bool, bool] = (False, False, False, False)
     chiptune_voice_solos: tuple[bool, bool, bool, bool] = (False, False, False, False)
@@ -43,6 +44,8 @@ class PipelineConfig:
     def __post_init__(self) -> None:
         if not self.use_chiptune_engine and self.sf2_path is None:
             raise ValueError("sf2_path is required unless use_chiptune_engine=True")
+        if self.chiptune_engine not in chiptune.SUPPORTED_ENGINES:
+            raise ValueError(f"Unsupported chiptune_engine: {self.chiptune_engine}")
         for name in (
             "chiptune_voice_volumes",
             "chiptune_voice_mutes",
@@ -80,7 +83,7 @@ class ConversionPipeline:
         cfg.output_dir.mkdir(parents=True, exist_ok=True)
 
         stem = cfg.audio_path.stem
-        suffix = "chiptune" if cfg.use_chiptune_engine else cfg.sf2_path.stem  # type: ignore[union-attr]
+        suffix = _chiptune_suffix(cfg.chiptune_engine) if cfg.use_chiptune_engine else cfg.sf2_path.stem  # type: ignore[union-attr]
         midi_out = cfg.output_dir / f"{stem}__{suffix}.mid"
         wav_out = cfg.output_dir / f"{stem}__{suffix}.wav"
 
@@ -111,11 +114,13 @@ class ConversionPipeline:
         midi_data.write(str(midi_out))
 
         if cfg.use_chiptune_engine:
-            self._stage("Rendering chiptune (NES-style synth)...", 75)
+            engine_label = "Game Boy DMG" if cfg.chiptune_engine == chiptune.ENGINE_GAME_BOY else "NES-style"
+            self._stage(f"Rendering chiptune ({engine_label} synth)...", 75)
             chiptune.render(
                 midi=midi_data,
                 output_wav_path=wav_out,
                 sample_rate=cfg.sample_rate,
+                engine=cfg.chiptune_engine,
                 voice_volumes=cfg.chiptune_voice_volumes,
                 voice_mutes=cfg.chiptune_voice_mutes,
                 voice_solos=cfg.chiptune_voice_solos,
@@ -178,3 +183,7 @@ class ConversionPipeline:
         save_audio(sources[target_idx], str(out_path), samplerate=model.samplerate)
         self._log(f"  -> stem '{stem_names[target_idx]}' saved to {out_path.name}")
         return out_path
+
+
+def _chiptune_suffix(engine: str) -> str:
+    return "gameboy" if engine == chiptune.ENGINE_GAME_BOY else "chiptune"
