@@ -1,0 +1,11 @@
+-r requirements.txt
+
+# Testing
+pytest>=7.4
+pytest-qt>=4.2
+
+# Linting / formatting
+ruff>=0.1
+
+# Packaging
+pyinstaller>=6.3

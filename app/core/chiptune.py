@@ -1,0 +1,260 @@
+"""Built-in NES-style chiptune renderer.
+
+Synthesizes pulse (square with selectable duty cycle), triangle, and noise
+waveforms directly from a MIDI sequence — no SoundFont required. Approximates
+the Nintendo NES APU: 2 pulse channels + 1 triangle + 1 noise, 4-voice
+polyphony with pitch-aware allocation and note stealing on overflow.
+"""
+from __future__ import annotations
+
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+import pretty_midi
+import soundfile as sf
+
+SAMPLE_RATE = 44100
+
+V_PULSE_LEAD = 0
+V_PULSE_HARM = 1
+V_TRIANGLE = 2
+V_NOISE = 3
+
+
+class ChiptuneError(Exception):
+    pass
+
+
+@dataclass(frozen=True)
+class _ChipNote:
+    pitch: int
+    start: float
+    end: float
+    velocity: int
+
+    @property
+    def freq_hz(self) -> float:
+        return 440.0 * (2.0 ** ((self.pitch - 69) / 12.0))
+
+
+# ---------- waveform generators ----------
+
+def _square(t: np.ndarray, freq: float, duty: float) -> np.ndarray:
+    phase = (t * freq) % 1.0
+    return np.where(phase < duty, 1.0, -1.0).astype(np.float32)
+
+
+def _triangle(t: np.ndarray, freq: float) -> np.ndarray:
+    phase = (t * freq) % 1.0
+    return (2.0 * np.abs(2.0 * phase - 1.0) - 1.0).astype(np.float32)
+
+
+def _noise(n_samples: int, seed: int) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    return rng.uniform(-1.0, 1.0, n_samples).astype(np.float32)
+
+
+def _wave_pulse_lead(t: np.ndarray, freq: float) -> np.ndarray:
+    return _square(t, freq, 0.5)
+
+
+def _wave_pulse_harm(t: np.ndarray, freq: float) -> np.ndarray:
+    return _square(t, freq, 0.25)
+
+
+def _wave_triangle(t: np.ndarray, freq: float) -> np.ndarray:
+    return _triangle(t, freq)
+
+
+# ---------- envelopes ----------
+
+def _adsr(
+    n_samples: int, sample_rate: int,
+    attack_ms: float, decay_ms: float, sustain: float, release_ms: float,
+) -> np.ndarray:
+    a = max(1, int(attack_ms * sample_rate / 1000))
+    d = max(1, int(decay_ms * sample_rate / 1000))
+    r = max(1, int(release_ms * sample_rate / 1000))
+    if a + d + r > n_samples:
+        scale = max(0.05, n_samples / (a + d + r))
+        a = max(1, int(a * scale))
+        d = max(1, int(d * scale))
+        r = max(1, int(r * scale))
+    s_len = max(0, n_samples - a - d - r)
+    env = np.empty(n_samples, dtype=np.float32)
+    env[:a] = np.linspace(0.0, 1.0, a, dtype=np.float32)
+    env[a:a + d] = np.linspace(1.0, sustain, d, dtype=np.float32)
+    env[a + d:a + d + s_len] = sustain
+    tail = n_samples - a - d - s_len
+    if tail > 0:
+        env[a + d + s_len:] = np.linspace(sustain, 0.0, tail, dtype=np.float32)
+    return env
+
+
+def _env_pulse(n: int, sr: int) -> np.ndarray:
+    return _adsr(n, sr, attack_ms=2.0, decay_ms=20.0, sustain=0.75, release_ms=40.0)
+
+
+def _env_triangle(n: int, sr: int) -> np.ndarray:
+    return _adsr(n, sr, attack_ms=4.0, decay_ms=10.0, sustain=0.85, release_ms=80.0)
+
+
+def _env_drum(n: int, sr: int) -> np.ndarray:
+    decay_samples = min(n, max(1, int(0.18 * sr)))
+    env = np.zeros(n, dtype=np.float32)
+    env[:decay_samples] = np.exp(-np.linspace(0.0, 6.0, decay_samples, dtype=np.float32))
+    return env
+
+
+# ---------- voice allocation ----------
+
+def _voice_label(idx: int) -> str:
+    return (
+        "Pulse 1 (lead, 50% duty)",
+        "Pulse 2 (harmony, 25% duty)",
+        "Triangle (bass)",
+        "Noise (drums)",
+    )[idx]
+
+
+def _assign_voices(midi: pretty_midi.PrettyMIDI) -> list[list[_ChipNote]]:
+    """Distribute MIDI notes across pulse-lead / pulse-harm / triangle / noise.
+
+    - Drum-channel notes (`instrument.is_drum`) always go to the noise voice.
+    - Melodic notes are routed by pitch:
+        * pitch < 50  -> triangle preferred (bass)
+        * pitch >= 72 -> pulse-lead preferred (lead)
+        * otherwise   -> pulse-harm preferred (harmony)
+      If the preferred voice is busy, fall back to the next free voice.
+      If all 3 melodic voices are busy, steal the one freeing soonest.
+    """
+    drum: list[_ChipNote] = []
+    melodic: list[_ChipNote] = []
+    for inst in midi.instruments:
+        for n in inst.notes:
+            cn = _ChipNote(pitch=int(n.pitch), start=float(n.start),
+                           end=float(n.end), velocity=int(n.velocity))
+            (drum if inst.is_drum else melodic).append(cn)
+
+    melodic.sort(key=lambda n: (n.start, n.pitch))
+
+    pulse_lead: list[_ChipNote] = []
+    pulse_harm: list[_ChipNote] = []
+    triangle: list[_ChipNote] = []
+    free_at = [0.0, 0.0, 0.0]  # earliest-free time for voices 0/1/2
+
+    for n in melodic:
+        if n.pitch < 50:
+            order = (V_TRIANGLE, V_PULSE_HARM, V_PULSE_LEAD)
+        elif n.pitch >= 72:
+            order = (V_PULSE_LEAD, V_PULSE_HARM, V_TRIANGLE)
+        else:
+            order = (V_PULSE_HARM, V_PULSE_LEAD, V_TRIANGLE)
+
+        chosen: int | None = None
+        for v in order:
+            if n.start >= free_at[v]:
+                chosen = v
+                break
+        if chosen is None:
+            chosen = min((V_PULSE_LEAD, V_PULSE_HARM, V_TRIANGLE), key=lambda i: free_at[i])
+
+        if chosen == V_PULSE_LEAD:
+            pulse_lead.append(n)
+        elif chosen == V_PULSE_HARM:
+            pulse_harm.append(n)
+        else:
+            triangle.append(n)
+        free_at[chosen] = max(free_at[chosen], n.end)
+
+    return [pulse_lead, pulse_harm, triangle, drum]
+
+
+# ---------- per-voice render ----------
+
+def _render_voice(
+    voice_idx: int, notes: list[_ChipNote], total_samples: int, sample_rate: int,
+) -> np.ndarray:
+    buf = np.zeros(total_samples, dtype=np.float32)
+    if not notes:
+        return buf
+
+    if voice_idx == V_PULSE_LEAD:
+        wave_fn, env_fn, gain = _wave_pulse_lead, _env_pulse, 0.28
+    elif voice_idx == V_PULSE_HARM:
+        wave_fn, env_fn, gain = _wave_pulse_harm, _env_pulse, 0.22
+    elif voice_idx == V_TRIANGLE:
+        wave_fn, env_fn, gain = _wave_triangle, _env_triangle, 0.32
+    else:
+        wave_fn, env_fn, gain = None, _env_drum, 0.22
+
+    for note in notes:
+        start = int(note.start * sample_rate)
+        end = int(note.end * sample_rate)
+        n = end - start
+        if n <= 0 or start >= total_samples:
+            continue
+        n = min(n, total_samples - start)
+        vel_gain = (note.velocity / 127.0) * gain
+
+        if voice_idx == V_NOISE:
+            seed = (note.pitch * 1009 + start) & 0xFFFFFFFF
+            samples = _noise(n, seed=seed)
+        else:
+            t = np.arange(n, dtype=np.float32) / sample_rate
+            samples = wave_fn(t, note.freq_hz)
+
+        env = env_fn(n, sample_rate)
+        buf[start:start + n] += samples * env * vel_gain
+
+    return buf
+
+
+# ---------- public render ----------
+
+def render(
+    midi: pretty_midi.PrettyMIDI | Path | str,
+    output_wav_path: Path,
+    *,
+    sample_rate: int = SAMPLE_RATE,
+    cancel_check: Callable[[], bool] | None = None,
+    log: Callable[[str], None] | None = None,
+) -> Path:
+    """Render a MIDI through the chiptune engine to a 16-bit stereo WAV.
+
+    `midi` may be a `pretty_midi.PrettyMIDI` instance or a path to an SMF.
+    Output is normalized to -3 dB to prevent clipping.
+    """
+    log = log or (lambda _m: None)
+    if isinstance(midi, (str, Path)):
+        midi = pretty_midi.PrettyMIDI(str(midi))
+
+    note_count = sum(len(inst.notes) for inst in midi.instruments)
+    if note_count == 0:
+        raise ChiptuneError("MIDI contains no notes to render.")
+
+    voices = _assign_voices(midi)
+    end_times = [n.end for vlist in voices for n in vlist]
+    total_seconds = (max(end_times) if end_times else 0.0) + 1.0
+    total_samples = int(total_seconds * sample_rate)
+    log(f"  -> {note_count} notes across 4 voices, {total_seconds:.1f}s")
+
+    mix = np.zeros(total_samples, dtype=np.float32)
+    for v_idx, notes in enumerate(voices):
+        if cancel_check is not None and cancel_check():
+            raise ChiptuneError("Render cancelled by user.")
+        log(f"  -> {_voice_label(v_idx)}: {len(notes)} notes")
+        mix += _render_voice(v_idx, notes, total_samples, sample_rate)
+
+    peak = float(np.max(np.abs(mix)))
+    if peak <= 0.0:
+        raise ChiptuneError("Chiptune render produced silence.")
+    mix = mix / peak * 0.85
+
+    stereo = np.column_stack([mix, mix])
+    out_int16 = (stereo * 32767.0).astype(np.int16)
+    output_wav_path.parent.mkdir(parents=True, exist_ok=True)
+    sf.write(str(output_wav_path), out_int16, sample_rate, subtype="PCM_16")
+    return output_wav_path

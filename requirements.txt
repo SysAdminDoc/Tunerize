@@ -1,0 +1,25 @@
+# UI
+PySide6>=6.6.0,<7
+
+# Audio I/O + analysis
+librosa>=0.10.1
+soundfile>=0.12.1
+numpy>=1.24,<2.2
+scipy>=1.10
+imageio-ffmpeg>=0.4.9       # bundles ffmpeg binary; resolves MP3 decode without external install
+
+# MIDI
+mido>=1.3.0
+pretty_midi>=0.2.10
+
+# Audio → MIDI transcription (Spotify Basic Pitch)
+basic-pitch>=0.4.0
+onnxruntime>=1.16            # ONNX backend — avoids the 1GB+ TensorFlow tail
+
+# MIDI → SoundFont synthesis
+pyFluidSynth>=1.3.3          # requires libfluidsynth installed on PATH (see README)
+
+# Optional: stem separation for mixed audio
+# Heavy (~300MB with PyTorch). Comment out for a lean install.
+demucs>=4.0.1
+torch>=2.1                   # demucs dependency, CPU build is fine

@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# AI working files (local-only — never commit)
+CLAUDE.md
+CODEX_CHANGELOG.md
+.claude/
+.codex/
+
+# Backups
+*.bak
+*.bak.*
+
+# PyInstaller / Nuitka build artifacts
+*.spec.bak
+tunerize.dist/
+tunerize.build/
+
+# Local SoundFont library (large binaries — users supply their own)
+soundfonts/*.sf2
+soundfonts/*.sf3
+soundfonts/*.SF2
+soundfonts/*.SF3
+!soundfonts/.gitkeep
+!soundfonts/README.md
+
+# Generated outputs (smoke tests, conversions)
+output/
+*.wav.test
+test_output/
+
+# Logs
+*.log
+logs/
+
+# Local config overrides
+config.local.json
