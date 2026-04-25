@@ -1,20 +1,25 @@
-"""Shared pytest fixtures."""
+"""Shared pytest fixtures.
+
+Heavy imports (`pretty_midi`) are kept inside the fixtures rather than at
+module level so test files that don't need them (e.g. the browser tests) can
+run with only stdlib + `requests` + `pytest` installed.
+"""
 from __future__ import annotations
 
 import struct
 from pathlib import Path
 
-import pretty_midi
 import pytest
 
 
 @pytest.fixture
-def synthetic_midi() -> pretty_midi.PrettyMIDI:
+def synthetic_midi():
     """A 4-second piano arpeggio + a drum hit on every quarter beat."""
+    import pretty_midi
     midi = pretty_midi.PrettyMIDI(initial_tempo=120.0)
 
     piano = pretty_midi.Instrument(program=0, is_drum=False, name="Piano")
-    pitches = [60, 64, 67, 72, 67, 64, 60, 64]  # C-E-G-C arpeggio
+    pitches = [60, 64, 67, 72, 67, 64, 60, 64]
     t = 0.0
     for pitch in pitches:
         piano.notes.append(pretty_midi.Note(
@@ -26,7 +31,7 @@ def synthetic_midi() -> pretty_midi.PrettyMIDI:
     drums = pretty_midi.Instrument(program=0, is_drum=True, name="Drums")
     for i in range(8):
         drums.notes.append(pretty_midi.Note(
-            velocity=100, pitch=36 if i % 2 == 0 else 38,  # kick / snare
+            velocity=100, pitch=36 if i % 2 == 0 else 38,
             start=i * 0.5, end=i * 0.5 + 0.05,
         ))
     midi.instruments.append(drums)
@@ -35,8 +40,9 @@ def synthetic_midi() -> pretty_midi.PrettyMIDI:
 
 
 @pytest.fixture
-def empty_midi() -> pretty_midi.PrettyMIDI:
+def empty_midi():
     """A PrettyMIDI with no notes — simulates Basic Pitch on silence."""
+    import pretty_midi
     midi = pretty_midi.PrettyMIDI(initial_tempo=120.0)
     midi.instruments.append(pretty_midi.Instrument(program=0))
     return midi

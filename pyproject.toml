@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tunerize"
-version = "0.1.0"
-description = "Re-render audio through any SoundFont. Audio -> MIDI -> SF2 -> WAV, locally."
+version = "0.2.0"
+description = "Re-render audio as chiptune or through any SoundFont. Built-in NES synth + online SoundFont browser. Audio -> MIDI -> render -> WAV, locally."
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 license = { text = "MIT" }

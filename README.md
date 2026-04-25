@@ -1,6 +1,6 @@
 # Tunerize
 
-[![Version](https://img.shields.io/badge/version-0.1.0-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
+[![Version](https://img.shields.io/badge/version-0.2.0-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square&logo=windows)](https://www.microsoft.com/windows)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -21,6 +21,7 @@ One window, one button, no cloud.
 ## Features
 
 - **Built-in chiptune engine** — NES-style 4-voice synth (2 pulse + triangle + noise) ships in the app. Zero install, instant retro.
+- **Online SoundFont browser** — search and install SF2s from public libraries (musical-artifacts.com, more sources coming) without leaving the app. License + author shown for every result.
 - **Bring-your-own SoundFonts** — Drop `.sf2` / `.sf3` into `soundfonts/`; Tunerize scans, validates, and lists them.
 - **One-click conversion** — Open audio, pick mode, hit Convert. WAV out.
 - **Stem separation (optional)** — Pre-split mixed tracks with Demucs for cleaner transcription on full songs.
@@ -57,14 +58,15 @@ python -m app.main
 
 ### Get some SoundFonts
 
-Tunerize ships *no* SoundFonts (licensing varies). Drop your own into `soundfonts/`:
+Three options:
 
-- **GeneralUser GS** (CC BY-SA, full GM bank, ~30MB) — [s-christian-griffiths.bandcamp.com](https://schristiangriffiths.bandcamp.com/album/generaluser-gs) or any mirror
-- **FluidR3 GM** (MIT, the FluidSynth default, ~140MB)
-- **8-bit / NES SF2 packs** — search "NES soundfont" / "chiptune sf2"
-- **SC-55 / SC-88** soundfonts — Roland synth recreations
-
-Restart Tunerize after adding files; it'll scan and list them.
+1. **Use the built-in browser** *(easiest)* — Open Tunerize, switch to SoundFont mode, click **Browse Online…**. Searches musical-artifacts.com, shows license per result, downloads & installs in one click.
+2. **Drop your own** into `soundfonts/` (`.sf2` / `.sf3`). Restart or hit ↻ to re-scan.
+3. **Recommended grabs**:
+   - **FluidR3 GM** (MIT, the FluidSynth default, ~140MB) — search the browser for "FluidR3"
+   - **GeneralUser GS** (CC BY-SA, full GM bank, ~30MB) — search "GeneralUser"
+   - **8-bit / NES** — search "NES" or "chiptune"
+   - **SC-55 / SC-88** — Roland synth recreations
 
 ---
 
@@ -73,7 +75,7 @@ Restart Tunerize after adding files; it'll scan and list them.
 1. **Open Audio** — pick an MP3 or WAV.
 2. **Choose render mode**:
    - **Chiptune Mode** — uses the built-in NES-style synth. No SoundFont required.
-   - **SoundFont Mode** — pick a `.sf2` from the dropdown or click *Add SoundFont…*.
+   - **SoundFont Mode** — pick a `.sf2` from the dropdown, click *Add…* to import one from disk, or click **Browse Online…** to grab one from a public library.
 3. *(Optional)* Toggle **Stem separation** if your input is a mixed song.
 4. *(Optional)* Open **Advanced** for transpose, quantize grid, force-preset mode, output folder.
 5. **Convert.** Watch the progress bar and log panel.
@@ -95,10 +97,11 @@ Restart Tunerize after adding files; it'll scan and list them.
 
 See [ROADMAP.md](ROADMAP.md). Highlights:
 
-- v0.2: Bundled FluidSynth (no separate install), per-preset selector with previews, Game Boy & SNES chiptune engines
-- v0.3: Polyphone integration (bundled SF2 editor — GPL, ships in installer)
-- v0.4: Built-in SF2 creator (sample → SF2, native, no external tool)
-- v0.5: MP3/OGG/FLAC export, batch mode, genre presets
+- v0.2 (this release): Online SoundFont browser
+- v0.3: Bundled FluidSynth, Game Boy / SNES / Genesis chiptune engines, more browser providers (Reddit, GitHub)
+- v0.4: Polyphone integration (bundled SF2 editor — GPL, ships in installer)
+- v0.5: Built-in SF2 creator (sample → SF2, native, no external tool)
+- v0.6: MP3/OGG/FLAC export, batch mode, genre presets, CLI mode
 
 ---
 

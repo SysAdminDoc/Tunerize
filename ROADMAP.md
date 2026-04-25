@@ -14,10 +14,17 @@
 - [x] Force-preset mode
 - [x] Unit tests for cleanup / soundfonts / chiptune / pipeline
 
-## v0.2.0 — Self-contained install + more retro engines
+## v0.2.0 — Online SoundFont browser (shipped 2026-04-25)
+- [x] **Online SoundFont browser** — search & install from public libraries inside the app
+- [x] musical-artifacts.com provider (REST/JSON, license-aware, cached)
+- [x] Provider abstraction so Reddit / GitHub / Polyphone can plug in
+- [x] Streaming download with cancel + progress + post-download SF2 validation
+- [x] Auto-switch to SF2 mode after install
+
+## v0.3.0 — Self-contained install + more retro engines + more browser sources
 - [ ] Bundle `fluidsynth.exe` (no `winget` requirement)
 - [ ] PyInstaller one-file Windows binary
-- [ ] Auto-download a default SoundFont (FluidR3 GM) on first run
+- [ ] Auto-download FluidR3 GM on first run (uses the v0.2 browser plumbing)
 - [ ] Per-preset dropdown with 5-second preview button
 - [ ] Recent-soundfont MRU list in dropdown
 - [ ] Drag-and-drop audio onto window
@@ -25,14 +32,16 @@
 - [ ] **SNES SPC700-style engine** — 8-voice with sample playback
 - [ ] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis
 - [ ] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)
+- [ ] **Reddit r/soundfonts** browser provider (trending community packs)
+- [ ] **GitHub topic:soundfont** browser provider
 
-## v0.3.0 — SoundFont editor (bundled)
+## v0.4.0 — SoundFont editor (bundled)
 - [ ] **Bundle Polyphone in installer** (GPL, ~25MB) — full SF2 editor, no external download
 - [ ] *Edit SoundFont…* button — launches bundled Polyphone with current SF2 loaded
 - [ ] SoundFont metadata viewer (presets, banks, sample count) inside Tunerize
 - [ ] Preset preview pane (play 5-sec arpeggio of selected preset)
 
-## v0.4.0 — Native SF2 creation
+## v0.5.0 — Native SF2 creation
 - [ ] Sample import (WAV → SF2 sample) — no external editor needed
 - [ ] Multi-sample preset builder (key range mapping)
 - [ ] Loop point editor
@@ -40,7 +49,7 @@
 - [ ] SF2 export
 - [ ] **"Convert chiptune voices to SF2"** — extract Tunerize's pulse/triangle/noise into a redistributable SF2
 
-## v0.5.0 — Power-user features
+## v0.6.0 — Power-user features
 - [ ] Batch mode (folder of audio → folder of WAVs)
 - [ ] MP3 / OGG / FLAC output options
 - [ ] Genre presets (chiptune, lo-fi, orchestral, etc.) — bundles SF2 + cleanup settings

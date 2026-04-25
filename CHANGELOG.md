@@ -2,6 +2,24 @@
 
 All notable changes to Tunerize are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [Semantic Versioning](https://semver.org/).
 
+## v0.2.0 — 2026-04-25
+
+Online SoundFont discovery — search public libraries from inside the app.
+
+### Added
+- **Online SoundFont browser** — modal dialog (`Browse Online…` button next to the SoundFont dropdown) that searches public libraries and installs straight into `soundfonts/`.
+  - First provider: **musical-artifacts.com** (REST/JSON API, per-artifact license metadata, direct file URLs, 60 req/min cached).
+  - Provider abstraction in [app/core/soundfont_browser.py](app/core/soundfont_browser.py) — Reddit r/soundfonts trending and a GitHub `topic:soundfont` provider can drop in next without UI changes.
+- Per-result detail pane: name, author, license, size, tags, description, link to source web page.
+- Streaming download with cancel + progress (bytes / total or indeterminate).
+- Post-download SF2 validation (RIFF/sfbk header check) — corrupt downloads are rejected before they enter the library.
+- Local response cache (`~/.tunerize/browser-cache/`) — searches stay snappy and keep us under the rate limit.
+- Auto-switches main UI to SoundFont mode when a freshly-installed SF2 is selected.
+- Bumped HTTP requirement: `requests>=2.31`.
+
+### Changed
+- README, ROADMAP, repo CLAUDE.md updated to reflect browser as the v0.2.0 headline.
+
 ## v0.1.0 — 2026-04-25
 
 Initial release. End-to-end MVP: audio in, retro-style audio out.

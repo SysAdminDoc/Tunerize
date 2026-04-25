@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from app import __version__
 from app.core.pipeline import ConversionPipeline, PipelineConfig
 from app.core.soundfonts import SoundFontLibrary
+from app.ui.browser_dialog import BrowserDialog
 
 
 class _Worker(QThread):
@@ -173,17 +174,22 @@ class MainWindow(QMainWindow):
         layout.setContentsMargins(0, 0, 0, 0)
 
         self.sf_combo = QComboBox()
-        add_btn = QPushButton("Add SoundFont…")
-        add_btn.clicked.connect(self._add_soundfont)
         refresh_btn = QPushButton("↻")
         refresh_btn.setToolTip("Re-scan soundfonts/ folder")
         refresh_btn.setFixedWidth(36)
         refresh_btn.clicked.connect(self._refresh_soundfonts)
+        add_btn = QPushButton("Add…")
+        add_btn.setToolTip("Import a .sf2 file from disk into your library")
+        add_btn.clicked.connect(self._add_soundfont)
+        browse_btn = QPushButton("Browse Online…")
+        browse_btn.setToolTip("Search and install SoundFonts from public libraries")
+        browse_btn.clicked.connect(self._open_browser)
 
         layout.addWidget(QLabel("SoundFont:"))
         layout.addWidget(self.sf_combo, 1)
         layout.addWidget(refresh_btn)
         layout.addWidget(add_btn)
+        layout.addWidget(browse_btn)
         return self.sf_frame
 
     def _output_row(self) -> QHBoxLayout:
@@ -319,6 +325,20 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             self._log(f"Import failed: {exc}")
             QMessageBox.warning(self, "Import failed", str(exc))
+
+    def _open_browser(self) -> None:
+        dlg = BrowserDialog(self.library.library_dir, parent=self)
+        dlg.sf_installed.connect(self._on_browser_installed)
+        dlg.exec()
+
+    def _on_browser_installed(self, path) -> None:
+        self._refresh_soundfonts()
+        idx = self.sf_combo.findData(str(path))
+        if idx >= 0:
+            self.sf_combo.setCurrentIndex(idx)
+            if self.mode_chiptune.isChecked():
+                self.mode_sf2.setChecked(True)  # auto-switch to SF2 mode after install
+        self._log(f"Installed from browser: {Path(path).name}")
 
     def _refresh_soundfonts(self) -> None:
         self.sf_combo.clear()
