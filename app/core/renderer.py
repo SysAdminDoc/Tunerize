@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from pathlib import Path
 
 import mido
@@ -92,10 +93,8 @@ def render(
         chunks.append(np.frombuffer(fs.get_samples(tail), dtype=np.int16))
 
     finally:
-        try:
+        with suppress(Exception):
             fs.delete()
-        except Exception:
-            pass
 
     if not chunks:
         raise RenderError("FluidSynth produced no audio samples.")

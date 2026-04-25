@@ -2,6 +2,16 @@
 
 All notable changes to Tunerize are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [Semantic Versioning](https://semver.org/).
 
+## Unreleased
+
+### Added
+- Drag-and-drop audio selection on the main window for all supported input formats.
+- Recent SoundFont persistence: the last five used or installed `.sf2` / `.sf3` files appear first in the SoundFont dropdown when still present in the local library.
+
+### Changed
+- Conversion now locks input/settings controls while work is running and treats user cancellation as a normal stopped state instead of a critical failure dialog.
+- Main-window and browser table styling tightened for clearer grouping, focus, and selected states.
+
 ## v0.2.0 — 2026-04-25
 
 Online SoundFont discovery — search public libraries from inside the app.

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -124,10 +125,8 @@ class ConversionPipeline:
 
         midi_returned: Path | None = midi_out
         if not cfg.export_midi:
-            try:
+            with suppress(OSError):
                 midi_out.unlink()
-            except OSError:
-                pass
             midi_returned = None
 
         return midi_returned, wav_out

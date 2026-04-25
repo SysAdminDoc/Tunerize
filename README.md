@@ -22,7 +22,8 @@ One window, one button, no cloud.
 
 - **Built-in chiptune engine** — NES-style 4-voice synth (2 pulse + triangle + noise) ships in the app. Zero install, instant retro.
 - **Online SoundFont browser** — search and install SF2s from public libraries (musical-artifacts.com, more sources coming) without leaving the app. License + author shown for every result.
-- **Bring-your-own SoundFonts** — Drop `.sf2` / `.sf3` into `soundfonts/`; Tunerize scans, validates, and lists them.
+- **Bring-your-own SoundFonts** — Drop `.sf2` / `.sf3` into `soundfonts/`; Tunerize scans, validates, lists them, and keeps your recent picks at the top.
+- **Drag-and-drop input** — Drop supported audio files directly on the window, or use the file picker.
 - **One-click conversion** — Open audio, pick mode, hit Convert. WAV out.
 - **Stem separation (optional)** — Pre-split mixed tracks with Demucs for cleaner transcription on full songs.
 - **MIDI export** — Keep the intermediate `.mid` for use elsewhere.
@@ -72,10 +73,10 @@ Three options:
 
 ## Usage
 
-1. **Open Audio** — pick an MP3 or WAV.
+1. **Open Audio** — pick or drop an MP3, WAV, FLAC, OGG, M4A, AIFF, or AIF.
 2. **Choose render mode**:
    - **Chiptune Mode** — uses the built-in NES-style synth. No SoundFont required.
-   - **SoundFont Mode** — pick a `.sf2` from the dropdown, click *Add…* to import one from disk, or click **Browse Online…** to grab one from a public library.
+   - **SoundFont Mode** — pick a `.sf2` from the dropdown, click *Add…* to import one from disk, or click **Browse Online…** to grab one from a public library. Recently installed or used SoundFonts appear first.
 3. *(Optional)* Toggle **Stem separation** if your input is a mixed song.
 4. *(Optional)* Open **Advanced** for transpose, quantize grid, force-preset mode, output folder.
 5. **Convert.** Watch the progress bar and log panel.

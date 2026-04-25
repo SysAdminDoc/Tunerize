@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -27,7 +28,9 @@ from PySide6.QtWidgets import (
 )
 
 from app import __version__
+from app.core.audio_io import SUPPORTED_INPUT_EXTS
 from app.core.pipeline import ConversionPipeline, PipelineConfig
+from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
 from app.core.soundfonts import SoundFontLibrary
 from app.ui.browser_dialog import BrowserDialog
 
@@ -86,14 +89,18 @@ class _CollapsibleBox(QWidget):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, soundfonts_dir: Path | None = None):
+    def __init__(self, soundfonts_dir: Path | None = None, settings_path: Path | None = None):
         super().__init__()
         self.setWindowTitle(f"Tunerize  v{__version__}")
         self.setMinimumSize(760, 620)
         self.resize(960, 760)
+        self.setAcceptDrops(True)
 
         self.library = SoundFontLibrary(soundfonts_dir or Path.cwd() / "soundfonts")
+        self._settings_path = settings_path
         self._worker: _Worker | None = None
+        self._busy = False
+        self._has_soundfonts = False
 
         self._build_ui()
         self._refresh_soundfonts()
@@ -135,7 +142,7 @@ class MainWindow(QMainWindow):
         frame = QFrame()
         frame.setObjectName("modeFrame")
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(20)
 
         layout.addWidget(QLabel("Render mode:"))
@@ -156,52 +163,56 @@ class MainWindow(QMainWindow):
 
     def _input_row(self) -> QHBoxLayout:
         self.input_edit = QLineEdit()
-        self.input_edit.setPlaceholderText("Pick an audio file (.mp3 / .wav / .flac / .ogg / .m4a)")
+        self.input_edit.setPlaceholderText("Pick or drop an audio file (.mp3 / .wav / .flac / .ogg / .m4a)")
+        self.input_edit.setAccessibleName("Selected audio file")
+        self.input_edit.setToolTip("Audio file to transcribe and render")
         self.input_edit.setReadOnly(True)
-        btn = QPushButton("Open Audio…")
-        btn.clicked.connect(self._pick_audio)
+        self.open_audio_btn = QPushButton("Open Audio…")
+        self.open_audio_btn.clicked.connect(self._pick_audio)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Audio:"))
         row.addWidget(self.input_edit, 1)
-        row.addWidget(btn)
+        row.addWidget(self.open_audio_btn)
         return row
 
     def _soundfont_frame(self) -> QWidget:
         self.sf_frame = QFrame()
         self.sf_frame.setObjectName("sfFrame")
         layout = QHBoxLayout(self.sf_frame)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(12, 10, 12, 10)
 
         self.sf_combo = QComboBox()
-        refresh_btn = QPushButton("↻")
-        refresh_btn.setToolTip("Re-scan soundfonts/ folder")
-        refresh_btn.setFixedWidth(36)
-        refresh_btn.clicked.connect(self._refresh_soundfonts)
-        add_btn = QPushButton("Add…")
-        add_btn.setToolTip("Import a .sf2 file from disk into your library")
-        add_btn.clicked.connect(self._add_soundfont)
-        browse_btn = QPushButton("Browse Online…")
-        browse_btn.setToolTip("Search and install SoundFonts from public libraries")
-        browse_btn.clicked.connect(self._open_browser)
+        self.sf_combo.setAccessibleName("SoundFont library")
+        self.sf_refresh_btn = QPushButton("↻")
+        self.sf_refresh_btn.setToolTip("Re-scan soundfonts/ folder")
+        self.sf_refresh_btn.setFixedWidth(36)
+        self.sf_refresh_btn.clicked.connect(self._refresh_soundfonts)
+        self.sf_add_btn = QPushButton("Add…")
+        self.sf_add_btn.setToolTip("Import a .sf2 file from disk into your library")
+        self.sf_add_btn.clicked.connect(self._add_soundfont)
+        self.sf_browse_btn = QPushButton("Browse Online…")
+        self.sf_browse_btn.setToolTip("Search and install SoundFonts from public libraries")
+        self.sf_browse_btn.clicked.connect(self._open_browser)
 
         layout.addWidget(QLabel("SoundFont:"))
         layout.addWidget(self.sf_combo, 1)
-        layout.addWidget(refresh_btn)
-        layout.addWidget(add_btn)
-        layout.addWidget(browse_btn)
+        layout.addWidget(self.sf_refresh_btn)
+        layout.addWidget(self.sf_add_btn)
+        layout.addWidget(self.sf_browse_btn)
         return self.sf_frame
 
     def _output_row(self) -> QHBoxLayout:
         self.out_edit = QLineEdit()
         self.out_edit.setPlaceholderText("Default: same folder as input")
-        btn = QPushButton("Choose…")
-        btn.clicked.connect(self._pick_output)
+        self.out_edit.setAccessibleName("Output folder")
+        self.output_btn = QPushButton("Choose…")
+        self.output_btn.clicked.connect(self._pick_output)
 
         row = QHBoxLayout()
         row.addWidget(QLabel("Output:"))
         row.addWidget(self.out_edit, 1)
-        row.addWidget(btn)
+        row.addWidget(self.output_btn)
         return row
 
     def _advanced_section(self) -> QWidget:
@@ -221,7 +232,7 @@ class MainWindow(QMainWindow):
         self.quantize_combo.addItems(["1/4", "1/8", "1/16", "1/32"])
         self.quantize_combo.setCurrentText("1/16")
         self.quantize_combo.setEnabled(False)
-        self.quantize_check.toggled.connect(self.quantize_combo.setEnabled)
+        self.quantize_check.toggled.connect(lambda _checked: self._sync_control_state())
         layout.addWidget(self.quantize_check, 1, 0)
         layout.addWidget(self.quantize_combo, 1, 1)
 
@@ -229,7 +240,7 @@ class MainWindow(QMainWindow):
         self.preset_spin = QSpinBox()
         self.preset_spin.setRange(0, 127)
         self.preset_spin.setEnabled(False)
-        self.force_preset_check.toggled.connect(self.preset_spin.setEnabled)
+        self.force_preset_check.toggled.connect(lambda _checked: self._sync_control_state())
         layout.addWidget(self.force_preset_check, 2, 0)
         layout.addWidget(self.preset_spin, 2, 1)
 
@@ -251,6 +262,7 @@ class MainWindow(QMainWindow):
         self.convert_btn = QPushButton("Convert")
         self.convert_btn.setObjectName("convertBtn")
         self.convert_btn.setMinimumHeight(46)
+        self.convert_btn.setDefault(True)
         self.convert_btn.clicked.connect(self._on_convert)
 
         self.cancel_btn = QPushButton("Cancel")
@@ -298,7 +310,7 @@ class MainWindow(QMainWindow):
             "Audio (*.mp3 *.wav *.flac *.ogg *.m4a *.aiff *.aif);;All files (*)",
         )
         if path:
-            self.input_edit.setText(path)
+            self._set_audio_path(Path(path), announce=True)
 
     def _pick_output(self) -> None:
         start = self.out_edit.text() or str(Path.home())
@@ -317,10 +329,7 @@ class MainWindow(QMainWindow):
             return
         try:
             new_sf = self.library.import_file(Path(path))
-            self._refresh_soundfonts()
-            idx = self.sf_combo.findData(str(new_sf.path))
-            if idx >= 0:
-                self.sf_combo.setCurrentIndex(idx)
+            self._remember_soundfont(new_sf.path, select=True)
             self._log(f"Imported SoundFont: {new_sf.name}")
         except Exception as exc:
             self._log(f"Import failed: {exc}")
@@ -332,29 +341,63 @@ class MainWindow(QMainWindow):
         dlg.exec()
 
     def _on_browser_installed(self, path) -> None:
-        self._refresh_soundfonts()
-        idx = self.sf_combo.findData(str(path))
-        if idx >= 0:
-            self.sf_combo.setCurrentIndex(idx)
-            if self.mode_chiptune.isChecked():
-                self.mode_sf2.setChecked(True)  # auto-switch to SF2 mode after install
-        self._log(f"Installed from browser: {Path(path).name}")
+        installed = Path(path)
+        self._remember_soundfont(installed, select=True)
+        if self.mode_chiptune.isChecked():
+            self.mode_sf2.setChecked(True)  # auto-switch to SF2 mode after install
+        self._log(f"Installed from browser: {installed.name}")
 
-    def _refresh_soundfonts(self) -> None:
+    def _refresh_soundfonts(self, select_path: Path | None = None) -> None:
+        current_data = self.sf_combo.currentData()
+        current = str(select_path) if select_path is not None else (str(current_data) if current_data else "")
         self.sf_combo.clear()
         sounds = self.library.scan()
+        self._has_soundfonts = bool(sounds)
         if not sounds:
             self.sf_combo.addItem(
                 "(no soundfonts found — drop .sf2 files into ./soundfonts/)", None
             )
-            self.sf_combo.setEnabled(False)
+            self._sync_control_state()
+            return
+
+        by_key = {normalize_path_key(sf.path): sf for sf in sounds}
+        recent_infos = []
+        seen_recent: set[str] = set()
+        for recent_path in load_recent_soundfonts(self._settings_path):
+            key = normalize_path_key(recent_path)
+            info = by_key.get(key)
+            if info is None or key in seen_recent:
+                continue
+            seen_recent.add(key)
+            recent_infos.append(info)
+
+        def add_soundfont(info, *, recent: bool = False) -> None:
+            prefix = "Recent: " if recent else ""
+            label = f"{prefix}{info.name} ({info.size_mb:.1f} MB)"
+            if not info.is_valid:
+                label += "  — INVALID"
+            self.sf_combo.addItem(label, str(info.path))
+
+        for sf in recent_infos:
+            add_soundfont(sf, recent=True)
+
+        recent_keys = {normalize_path_key(sf.path) for sf in recent_infos}
+        regular_infos = [sf for sf in sounds if normalize_path_key(sf.path) not in recent_keys]
+        if recent_infos and regular_infos:
+            self.sf_combo.insertSeparator(self.sf_combo.count())
+        for sf in regular_infos:
+            add_soundfont(sf)
+
+        idx = self.sf_combo.findData(current)
+        if idx >= 0:
+            self.sf_combo.setCurrentIndex(idx)
         else:
-            self.sf_combo.setEnabled(True)
-            for sf in sounds:
-                label = f"{sf.name} ({sf.size_mb:.1f} MB)"
-                if not sf.is_valid:
-                    label += "  — INVALID"
-                self.sf_combo.addItem(label, str(sf.path))
+            for i in range(self.sf_combo.count()):
+                if self.sf_combo.itemData(i):
+                    self.sf_combo.setCurrentIndex(i)
+                    break
+
+        self._sync_control_state()
 
     def _update_mode_visibility(self) -> None:
         chiptune = self.mode_chiptune.isChecked()
@@ -362,6 +405,85 @@ class MainWindow(QMainWindow):
 
     def _log(self, msg: str) -> None:
         self.log_panel.appendPlainText(msg)
+
+    def _set_audio_path(self, path: Path, *, announce: bool = False) -> None:
+        self.input_edit.setText(str(path))
+        self.stage_label.setText(f"Ready: {path.name}")
+        if announce:
+            self._log(f"Audio selected: {path}")
+
+    def _remember_soundfont(self, path: Path, *, select: bool = False) -> None:
+        try:
+            remember_soundfont(path, self._settings_path)
+        except (OSError, ValueError) as exc:
+            self._log(f"Could not update recent SoundFonts: {exc}")
+        self._refresh_soundfonts(select_path=path if select else None)
+
+    def _set_busy(self, busy: bool) -> None:
+        self._busy = busy
+        self._sync_control_state()
+
+    def _sync_control_state(self) -> None:
+        enabled = not self._busy
+        for widget in (
+            self.open_audio_btn,
+            self.input_edit,
+            self.mode_chiptune,
+            self.mode_sf2,
+            self.out_edit,
+            self.output_btn,
+            self.demucs_check,
+            self.sf_refresh_btn,
+            self.sf_add_btn,
+            self.sf_browse_btn,
+            self.transpose_spin,
+            self.quantize_check,
+            self.force_preset_check,
+            self.export_midi_check,
+            self.min_note_spin,
+        ):
+            widget.setEnabled(enabled)
+
+        self.sf_combo.setEnabled(enabled and self._has_soundfonts)
+        self.quantize_combo.setEnabled(enabled and self.quantize_check.isChecked())
+        self.preset_spin.setEnabled(enabled and self.force_preset_check.isChecked())
+        self.convert_btn.setEnabled(enabled)
+        self.cancel_btn.setEnabled(self._busy)
+        self.setAcceptDrops(enabled)
+
+    def _audio_path_from_drop(self, event: QDragEnterEvent | QDragMoveEvent | QDropEvent) -> Path | None:
+        if self._busy:
+            return None
+        mime = event.mimeData()
+        if not mime.hasUrls():
+            return None
+        for url in mime.urls():
+            if not url.isLocalFile():
+                continue
+            path = Path(url.toLocalFile())
+            if path.suffix.lower() in SUPPORTED_INPUT_EXTS:
+                return path
+        return None
+
+    def dragEnterEvent(self, event: QDragEnterEvent) -> None:
+        if self._audio_path_from_drop(event) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event: QDragMoveEvent) -> None:
+        if self._audio_path_from_drop(event) is not None:
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event: QDropEvent) -> None:
+        path = self._audio_path_from_drop(event)
+        if path is None:
+            event.ignore()
+            return
+        self._set_audio_path(path, announce=True)
+        event.acceptProposedAction()
 
     def _on_convert(self) -> None:
         audio = self.input_edit.text().strip()
@@ -404,8 +526,10 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Configuration error", str(exc))
             return
 
-        self.convert_btn.setEnabled(False)
-        self.cancel_btn.setEnabled(True)
+        if sf2_path is not None:
+            self._remember_soundfont(sf2_path, select=True)
+
+        self._set_busy(True)
         self.progress_bar.setValue(0)
         self.log_panel.clear()
         self._log(
@@ -423,6 +547,8 @@ class MainWindow(QMainWindow):
     def _on_cancel(self) -> None:
         if self._worker is not None:
             self._worker.cancel()
+            self.cancel_btn.setEnabled(False)
+            self.stage_label.setText("Cancelling...")
             self._log("Cancellation requested...")
 
     @Slot(str, int)
@@ -432,8 +558,7 @@ class MainWindow(QMainWindow):
 
     @Slot(object, object)
     def _on_done_ok(self, midi_path, wav_path) -> None:
-        self.convert_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(False)
+        self._set_busy(False)
         self.stage_label.setText("Done.")
         self.progress_bar.setValue(100)
         self._log(f"WAV written: {wav_path}")
@@ -442,8 +567,12 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_done_err(self, err_msg: str) -> None:
-        self.convert_btn.setEnabled(True)
-        self.cancel_btn.setEnabled(False)
+        self._set_busy(False)
+        if "cancelled" in err_msg.lower():
+            self.stage_label.setText("Cancelled.")
+            self._log("Conversion cancelled.")
+            return
+
         self.stage_label.setText("Failed.")
         self._log(f"ERROR: {err_msg}")
         QMessageBox.critical(self, "Conversion failed", err_msg)

@@ -14,6 +14,7 @@ import json
 import shutil
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -162,10 +163,8 @@ class MusicalArtifactsProvider:
         if self._cache_dir is None:
             return
         path = self._cache_dir / f"{key}.json"
-        try:
+        with suppress(OSError):
             path.write_text(json.dumps(data), encoding="utf-8")
-        except OSError:
-            pass
 
 
 # ---------- downloader ----------
@@ -232,10 +231,8 @@ def download_to_library(
         return dest
     finally:
         if tmp.exists():
-            try:
+            with suppress(OSError):
                 tmp.unlink()
-            except OSError:
-                pass
 
 
 def _content_length(r) -> int | None:

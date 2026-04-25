@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 QSS = """
-* { font-family: 'Segoe UI', 'Inter', 'San Francisco', sans-serif; }
+* { font-family: Segoe UI, Arial, sans-serif; }
 
 QMainWindow, QWidget { background: #1e1e2e; color: #cdd6f4; }
 
@@ -13,6 +13,12 @@ QLabel#stage { font-size: 10pt; color: #89b4fa; padding-top: 6px; }
 QLabel#logLabel {
     font-size: 9pt; color: #6c7086; padding-top: 8px;
     text-transform: uppercase; letter-spacing: 1px;
+}
+
+QFrame#modeFrame, QFrame#sfFrame {
+    background: #181825;
+    border: 1px solid #313244;
+    border-radius: 8px;
 }
 
 QLineEdit, QComboBox, QSpinBox, QPlainTextEdit {
@@ -33,6 +39,17 @@ QComboBox QAbstractItemView {
     background: #181825; color: #cdd6f4;
     border: 1px solid #313244; selection-background-color: #45475a;
     outline: none;
+}
+
+QRadioButton { color: #cdd6f4; spacing: 8px; }
+QRadioButton::indicator {
+    width: 15px; height: 15px; border-radius: 8px;
+    border: 1px solid #585b70; background: #11111b;
+}
+QRadioButton::indicator:hover { border-color: #89b4fa; }
+QRadioButton::indicator:checked {
+    background: #89b4fa;
+    border: 4px solid #11111b;
 }
 
 QPushButton {
@@ -81,6 +98,20 @@ QProgressBar::chunk {
     background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #cba6f7, stop:1 #89b4fa);
     border-radius: 3px;
 }
+
+QTableView, QTextEdit {
+    background: #181825; color: #cdd6f4;
+    border: 1px solid #313244; border-radius: 6px;
+    gridline-color: #313244; selection-background-color: #45475a;
+    selection-color: #f5e0dc;
+}
+QTableView::item { padding: 6px; }
+QHeaderView::section {
+    background: #313244; color: #bac2de;
+    border: none; border-right: 1px solid #45475a;
+    padding: 7px 8px; font-weight: 600;
+}
+QSplitter::handle { background: #313244; height: 2px; }
 
 QGroupBox {
     color: #a6adc8; border: 1px solid #313244; border-radius: 6px;

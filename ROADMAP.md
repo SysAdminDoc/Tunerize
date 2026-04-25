@@ -26,8 +26,10 @@
 - [ ] PyInstaller one-file Windows binary
 - [ ] Auto-download FluidR3 GM on first run (uses the v0.2 browser plumbing)
 - [ ] Per-preset dropdown with 5-second preview button
-- [ ] Recent-soundfont MRU list in dropdown
-- [ ] Drag-and-drop audio onto window
+- [x] Recent-soundfont MRU list in dropdown
+  - Completed 2026-04-25: persists the last five used or installed `.sf2` / `.sf3` files and shows available matches first.
+- [x] Drag-and-drop audio onto window
+  - Completed 2026-04-25: accepts supported audio files anywhere on the main window and blocks drops during conversion.
 - [ ] **Game Boy DMG engine** — 4-voice variant (2 pulse, custom waveform, noise)
 - [ ] **SNES SPC700-style engine** — 8-voice with sample playback
 - [ ] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 
@@ -13,10 +14,8 @@ def _set_dpi_awareness() -> None:
     try:
         ctypes.windll.shcore.SetProcessDpiAwareness(2)
     except (AttributeError, OSError):
-        try:
+        with suppress(AttributeError, OSError):
             ctypes.windll.user32.SetProcessDPIAware()
-        except (AttributeError, OSError):
-            pass
 
 
 def _bundle_ffmpeg_on_path() -> None:

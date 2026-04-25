@@ -21,4 +21,4 @@ Three reasons:
 2. **Repo size** — even one full GM bank doubles the repo size.
 3. **Personal taste** — the 8-bit folks want chiptune, the orchestrators want SC-55, the lo-fi folks want Mellotron. No default fits all.
 
-In v0.2 Tunerize will offer a one-click download of FluidR3 GM on first run for users who don't want to hunt.
+Use **Browse Online…** in SoundFont mode to search public libraries from inside Tunerize. First-run FluidR3 GM onboarding is still planned.

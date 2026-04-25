@@ -24,8 +24,8 @@ def transcribe(
     ONNX automatically.
     """
     try:
-        from basic_pitch.inference import predict
         from basic_pitch import ICASSP_2022_MODEL_PATH
+        from basic_pitch.inference import predict
     except ImportError as e:
         raise TranscriptionError(
             "basic-pitch is not installed. Run:\n"
@@ -43,10 +43,7 @@ def transcribe(
     except Exception as e:
         raise TranscriptionError(f"Basic Pitch failed: {e}") from e
 
-    if isinstance(result, tuple) and len(result) >= 2:
-        midi_data = result[1]
-    else:
-        midi_data = result
+    midi_data = result[1] if isinstance(result, tuple) and len(result) >= 2 else result
 
     if midi_data is None:
         raise TranscriptionError("Basic Pitch returned no MIDI data.")

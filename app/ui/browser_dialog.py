@@ -97,10 +97,12 @@ class _ResultsModel(QAbstractTableModel):
         self._results = list(results)
         self.endResetModel()
 
-    def rowCount(self, parent=QModelIndex()) -> int:
+    def rowCount(self, parent=None) -> int:
+        if parent is None:
+            parent = QModelIndex()
         return 0 if parent.isValid() else len(self._results)
 
-    def columnCount(self, parent=QModelIndex()) -> int:
+    def columnCount(self, parent=None) -> int:
         return len(self.HEADERS)
 
     def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):

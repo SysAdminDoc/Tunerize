@@ -30,7 +30,7 @@ def test_transpose_shifts_pitches(synthetic_midi):
     original = [n.pitch for inst in synthetic_midi.instruments for n in inst.notes if not inst.is_drum]
     cleaned = clean(synthetic_midi, transpose=12)
     shifted = [n.pitch for inst in cleaned.instruments for n in inst.notes if not inst.is_drum]
-    assert all(s == o + 12 for o, s in zip(original, shifted))
+    assert all(s == o + 12 for o, s in zip(original, shifted, strict=True))
 
 
 def test_min_velocity_culls_quiet_notes():
