@@ -52,3 +52,16 @@ def test_config_defaults():
     assert cfg.sample_rate == 44100
     assert cfg.stem_separate is False
     assert cfg.min_note_ms == 58
+    assert cfg.chiptune_voice_volumes == (1.0, 1.0, 1.0, 1.0)
+    assert cfg.chiptune_voice_mutes == (False, False, False, False)
+    assert cfg.chiptune_voice_solos == (False, False, False, False)
+
+
+def test_config_validates_chiptune_voice_control_lengths(tmp_path):
+    with pytest.raises(ValueError, match="chiptune_voice_volumes"):
+        PipelineConfig(
+            audio_path=tmp_path / "in.mp3",
+            output_dir=tmp_path / "out",
+            use_chiptune_engine=True,
+            chiptune_voice_volumes=(1.0, 1.0),  # type: ignore[arg-type]
+        )

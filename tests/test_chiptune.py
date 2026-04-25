@@ -6,7 +6,7 @@ import pretty_midi
 import pytest
 import soundfile as sf
 
-from app.core.chiptune import ChiptuneError, _assign_voices, render
+from app.core.chiptune import ChiptuneError, _assign_voices, _voice_mixer_gains, render
 
 
 def test_render_produces_nonsilent_wav(tmp_path, synthetic_midi):
@@ -73,3 +73,32 @@ def test_render_respects_cancel(tmp_path, synthetic_midi):
     with pytest.raises(ChiptuneError):
         render(synthetic_midi, tmp_path / "out.wav", cancel_check=cancel_check)
     assert cancelled["flag"]
+
+
+def test_voice_mixer_solo_overrides_mute():
+    gains = _voice_mixer_gains(
+        voice_mutes=(True, False, False, False),
+        voice_solos=(True, False, False, False),
+    )
+    assert gains == (1.0, 0.0, 0.0, 0.0)
+
+
+def test_voice_mixer_rejects_all_muted(tmp_path, synthetic_midi):
+    with pytest.raises(ChiptuneError, match="muted every voice"):
+        render(
+            synthetic_midi,
+            tmp_path / "muted.wav",
+            voice_mutes=(True, True, True, True),
+        )
+
+
+def test_render_voice_mute_changes_mix(tmp_path, synthetic_midi):
+    default_out = tmp_path / "default.wav"
+    muted_out = tmp_path / "muted.wav"
+
+    render(synthetic_midi, default_out)
+    render(synthetic_midi, muted_out, voice_mutes=(True, False, False, False))
+
+    default_audio, _ = sf.read(str(default_out))
+    muted_audio, _ = sf.read(str(muted_out))
+    assert not np.allclose(default_audio, muted_audio)

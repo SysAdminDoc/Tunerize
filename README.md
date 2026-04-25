@@ -28,6 +28,7 @@ One window, one button, no cloud.
 - **Stem separation (optional)** — Pre-split mixed tracks with Demucs for cleaner transcription on full songs.
 - **MIDI export** — Keep the intermediate `.mid` for use elsewhere.
 - **MIDI cleanup** — Quantize, remove tiny artifacts, normalize velocity, transpose. All defaults sane; tweak in Advanced.
+- **Chiptune voice mixer** — Adjust, mute, or solo the built-in pulse, triangle, and noise voices before rendering.
 - **Force-preset mode** — For non-GM SoundFonts, force every note through one preset.
 - **Background worker** — UI never freezes during long conversions.
 - **Dark by default** — Catppuccin Mocha theme.
@@ -78,7 +79,7 @@ Three options:
    - **Chiptune Mode** — uses the built-in NES-style synth. No SoundFont required.
    - **SoundFont Mode** — pick a `.sf2` from the dropdown, click *Add…* to import one from disk, or click **Browse Online…** to grab one from a public library. Recently installed or used SoundFonts appear first.
 3. *(Optional)* Toggle **Stem separation** if your input is a mixed song.
-4. *(Optional)* Open **Advanced** for transpose, quantize grid, force-preset mode, output folder.
+4. *(Optional)* Open **Advanced** for transpose, quantize grid, chiptune voice mix, force-preset mode, output folder.
 5. **Convert.** Watch the progress bar and log panel.
 6. Output lands at `<input_dir>/<song>__chiptune.wav` (or `__<soundfont>.wav`), plus `.mid` if you opted in.
 

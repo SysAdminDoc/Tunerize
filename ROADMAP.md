@@ -33,7 +33,8 @@
 - [ ] **Game Boy DMG engine** — 4-voice variant (2 pulse, custom waveform, noise)
 - [ ] **SNES SPC700-style engine** — 8-voice with sample playback
 - [ ] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis
-- [ ] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)
+- [x] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)
+  - Completed 2026-04-25: Advanced settings now control pulse 1, pulse 2, triangle, and noise voice volume/mute/solo before rendering.
 - [ ] **Reddit r/soundfonts** browser provider (trending community packs)
 - [ ] **GitHub topic:soundfont** browser provider
 

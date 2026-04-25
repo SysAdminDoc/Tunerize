@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QRadioButton,
+    QSlider,
     QSpinBox,
     QToolButton,
     QVBoxLayout,
@@ -101,6 +102,11 @@ class MainWindow(QMainWindow):
         self._worker: _Worker | None = None
         self._busy = False
         self._has_soundfonts = False
+        self.voice_volume_sliders: list[QSlider] = []
+        self.voice_value_labels: list[QLabel] = []
+        self.voice_mute_checks: list[QCheckBox] = []
+        self.voice_solo_checks: list[QCheckBox] = []
+        self._chiptune_mixer_widgets: list[QWidget] = []
 
         self._build_ui()
         self._refresh_soundfonts()
@@ -219,6 +225,7 @@ class MainWindow(QMainWindow):
         adv = _CollapsibleBox("Advanced settings")
         layout = QGridLayout()
         layout.setContentsMargins(20, 6, 0, 6)
+        layout.setColumnStretch(1, 1)
 
         self.transpose_spin = QSpinBox()
         self.transpose_spin.setRange(-24, 24)
@@ -254,6 +261,56 @@ class MainWindow(QMainWindow):
         self.min_note_spin.setSuffix(" ms")
         layout.addWidget(QLabel("Min note length:"), 4, 0)
         layout.addWidget(self.min_note_spin, 4, 1)
+
+        mixer_label = QLabel("Chiptune voice mixer:")
+        mixer_label.setToolTip("Applies only to the built-in chiptune renderer.")
+        layout.addWidget(mixer_label, 5, 0, 1, 2)
+
+        mixer_widget = QWidget()
+        mixer_layout = QGridLayout(mixer_widget)
+        mixer_layout.setContentsMargins(0, 0, 0, 0)
+        mixer_layout.setHorizontalSpacing(12)
+        mixer_layout.setVerticalSpacing(6)
+        mixer_layout.setColumnStretch(1, 1)
+
+        voice_names = (
+            "Pulse 1 lead",
+            "Pulse 2 harmony",
+            "Triangle bass",
+            "Noise drums",
+        )
+        for row_offset, voice_name in enumerate(voice_names):
+            name_label = QLabel(voice_name)
+            volume = QSlider(Qt.Orientation.Horizontal)
+            volume.setRange(0, 150)
+            volume.setValue(100)
+            volume.setSingleStep(5)
+            volume.setPageStep(10)
+            volume.setMinimumWidth(180)
+            volume.setAccessibleName(f"{voice_name} volume")
+            volume.setToolTip("Voice volume, 100% preserves the default mix.")
+            value_label = QLabel("100%")
+            value_label.setFixedWidth(42)
+            volume.valueChanged.connect(lambda value, label=value_label: label.setText(f"{value}%"))
+
+            mute = QCheckBox("Mute")
+            mute.setAccessibleName(f"Mute {voice_name}")
+            solo = QCheckBox("Solo")
+            solo.setAccessibleName(f"Solo {voice_name}")
+
+            mixer_layout.addWidget(name_label, row_offset, 0)
+            mixer_layout.addWidget(volume, row_offset, 1)
+            mixer_layout.addWidget(value_label, row_offset, 2)
+            mixer_layout.addWidget(mute, row_offset, 3)
+            mixer_layout.addWidget(solo, row_offset, 4)
+
+            self.voice_volume_sliders.append(volume)
+            self.voice_value_labels.append(value_label)
+            self.voice_mute_checks.append(mute)
+            self.voice_solo_checks.append(solo)
+            self._chiptune_mixer_widgets.extend([name_label, volume, value_label, mute, solo])
+
+        layout.addWidget(mixer_widget, 6, 0, 1, 2)
 
         adv.setContentLayout(layout)
         return adv
@@ -402,6 +459,7 @@ class MainWindow(QMainWindow):
     def _update_mode_visibility(self) -> None:
         chiptune = self.mode_chiptune.isChecked()
         self.sf_frame.setVisible(not chiptune)
+        self._sync_control_state()
 
     def _log(self, msg: str) -> None:
         self.log_panel.appendPlainText(msg)
@@ -450,6 +508,10 @@ class MainWindow(QMainWindow):
         self.convert_btn.setEnabled(enabled)
         self.cancel_btn.setEnabled(self._busy)
         self.setAcceptDrops(enabled)
+
+        mixer_enabled = enabled and self.mode_chiptune.isChecked()
+        for widget in self._chiptune_mixer_widgets:
+            widget.setEnabled(mixer_enabled)
 
     def _audio_path_from_drop(self, event: QDragEnterEvent | QDragMoveEvent | QDropEvent) -> Path | None:
         if self._busy:
@@ -503,9 +565,17 @@ class MainWindow(QMainWindow):
                 )
                 return
             sf2_path = Path(sf2_data)
+        elif not self._chiptune_mixer_has_audible_voice():
+            QMessageBox.warning(
+                self,
+                "Mixer muted",
+                "Enable at least one chiptune voice or raise a soloed voice above 0%.",
+            )
+            return
 
         out_dir_text = self.out_edit.text().strip()
         out_dir = Path(out_dir_text) if out_dir_text else Path(audio).parent
+        voice_volumes, voice_mutes, voice_solos = self._chiptune_voice_settings()
 
         try:
             config = PipelineConfig(
@@ -521,6 +591,9 @@ class MainWindow(QMainWindow):
                 min_note_ms=self.min_note_spin.value(),
                 stem_separate=self.demucs_check.isChecked(),
                 export_midi=self.export_midi_check.isChecked(),
+                chiptune_voice_volumes=voice_volumes,
+                chiptune_voice_mutes=voice_mutes,
+                chiptune_voice_solos=voice_solos,
             )
         except ValueError as exc:
             QMessageBox.warning(self, "Configuration error", str(exc))
@@ -576,3 +649,26 @@ class MainWindow(QMainWindow):
         self.stage_label.setText("Failed.")
         self._log(f"ERROR: {err_msg}")
         QMessageBox.critical(self, "Conversion failed", err_msg)
+
+    def _chiptune_voice_settings(self) -> tuple[
+        tuple[float, float, float, float],
+        tuple[bool, bool, bool, bool],
+        tuple[bool, bool, bool, bool],
+    ]:
+        volumes = tuple(slider.value() / 100.0 for slider in self.voice_volume_sliders)
+        mutes = tuple(check.isChecked() for check in self.voice_mute_checks)
+        solos = tuple(check.isChecked() for check in self.voice_solo_checks)
+        return (
+            (volumes[0], volumes[1], volumes[2], volumes[3]),
+            (mutes[0], mutes[1], mutes[2], mutes[3]),
+            (solos[0], solos[1], solos[2], solos[3]),
+        )
+
+    def _chiptune_mixer_has_audible_voice(self) -> bool:
+        volumes, mutes, solos = self._chiptune_voice_settings()
+        if any(solos):
+            return any(volume > 0.0 and solo for volume, solo in zip(volumes, solos, strict=True))
+        return any(
+            volume > 0.0 and not muted
+            for volume, muted in zip(volumes, mutes, strict=True)
+        )

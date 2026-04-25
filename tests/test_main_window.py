@@ -50,6 +50,31 @@ def test_main_window_drop_helper_accepts_audio_and_blocks_while_busy(qtbot, tmp_
     assert window._audio_path_from_drop(event) is None
 
 
+def test_main_window_chiptune_mixer_mode_state(qtbot, tmp_path):
+    window = MainWindow(soundfonts_dir=tmp_path / "soundfonts", settings_path=tmp_path / "settings.json")
+    qtbot.addWidget(window)
+
+    assert all(widget.isEnabled() for widget in window._chiptune_mixer_widgets)
+    assert window._chiptune_voice_settings()[0] == (1.0, 1.0, 1.0, 1.0)
+
+    window.mode_sf2.setChecked(True)
+
+    assert all(not widget.isEnabled() for widget in window._chiptune_mixer_widgets)
+
+
+def test_main_window_chiptune_mixer_detects_silent_settings(qtbot, tmp_path):
+    window = MainWindow(soundfonts_dir=tmp_path / "soundfonts", settings_path=tmp_path / "settings.json")
+    qtbot.addWidget(window)
+    for check in window.voice_mute_checks:
+        check.setChecked(True)
+
+    assert window._chiptune_mixer_has_audible_voice() is False
+
+    window.voice_solo_checks[0].setChecked(True)
+
+    assert window._chiptune_mixer_has_audible_voice() is True
+
+
 def _write_fake_sf2(path: Path) -> Path:
     path.write_bytes(b"RIFF" + struct.pack("<I", 4) + b"sfbk" + b"\x00" * 32)
     return path

@@ -36,10 +36,20 @@ class PipelineConfig:
     stem_separate: bool = False
     export_midi: bool = True
     sample_rate: int = 44100
+    chiptune_voice_volumes: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
+    chiptune_voice_mutes: tuple[bool, bool, bool, bool] = (False, False, False, False)
+    chiptune_voice_solos: tuple[bool, bool, bool, bool] = (False, False, False, False)
 
     def __post_init__(self) -> None:
         if not self.use_chiptune_engine and self.sf2_path is None:
             raise ValueError("sf2_path is required unless use_chiptune_engine=True")
+        for name in (
+            "chiptune_voice_volumes",
+            "chiptune_voice_mutes",
+            "chiptune_voice_solos",
+        ):
+            if len(getattr(self, name)) != 4:
+                raise ValueError(f"{name} must contain 4 values")
 
 
 class ConversionPipeline:
@@ -106,6 +116,9 @@ class ConversionPipeline:
                 midi=midi_data,
                 output_wav_path=wav_out,
                 sample_rate=cfg.sample_rate,
+                voice_volumes=cfg.chiptune_voice_volumes,
+                voice_mutes=cfg.chiptune_voice_mutes,
+                voice_solos=cfg.chiptune_voice_solos,
                 cancel_check=self._cancel_check,
                 log=self._log,
             )

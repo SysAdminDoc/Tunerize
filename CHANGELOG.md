@@ -7,6 +7,7 @@ All notable changes to Tunerize are documented here. Format follows [Keep a Chan
 ### Added
 - Drag-and-drop audio selection on the main window for all supported input formats.
 - Recent SoundFont persistence: the last five used or installed `.sf2` / `.sf3` files appear first in the SoundFont dropdown when still present in the local library.
+- Chiptune voice mixer in Advanced settings with per-voice volume, mute, and solo controls for pulse 1, pulse 2, triangle, and noise.
 
 ### Changed
 - Conversion now locks input/settings controls while work is running and treats user cancellation as a normal stopped state instead of a critical failure dialog.

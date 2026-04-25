@@ -7,7 +7,7 @@ polyphony with pitch-aware allocation and note stealing on overflow.
 """
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -21,6 +21,11 @@ V_PULSE_LEAD = 0
 V_PULSE_HARM = 1
 V_TRIANGLE = 2
 V_NOISE = 3
+VOICE_COUNT = 4
+DEFAULT_VOICE_VOLUMES = (1.0, 1.0, 1.0, 1.0)
+DEFAULT_VOICE_MUTES = (False, False, False, False)
+DEFAULT_VOICE_SOLOS = (False, False, False, False)
+BASE_VOICE_GAINS = (0.28, 0.22, 0.32, 0.22)
 
 
 class ChiptuneError(Exception):
@@ -119,6 +124,38 @@ def _voice_label(idx: int) -> str:
     )[idx]
 
 
+def _voice_mixer_gains(
+    voice_volumes: Sequence[float] | None = None,
+    voice_mutes: Sequence[bool] | None = None,
+    voice_solos: Sequence[bool] | None = None,
+) -> tuple[float, float, float, float]:
+    volumes = _coerce_voice_values(voice_volumes, DEFAULT_VOICE_VOLUMES, "voice_volumes")
+    mutes = _coerce_voice_values(voice_mutes, DEFAULT_VOICE_MUTES, "voice_mutes")
+    solos = _coerce_voice_values(voice_solos, DEFAULT_VOICE_SOLOS, "voice_solos")
+
+    solo_mode = any(solos)
+    gains: list[float] = []
+    for volume, muted, soloed in zip(volumes, mutes, solos, strict=True):
+        clamped_volume = min(1.5, max(0.0, float(volume)))
+        if solo_mode:
+            gains.append(clamped_volume if soloed else 0.0)
+        else:
+            gains.append(0.0 if muted else clamped_volume)
+
+    if all(gain <= 0.0 for gain in gains):
+        raise ChiptuneError("Chiptune mixer muted every voice.")
+    return gains[0], gains[1], gains[2], gains[3]
+
+
+def _coerce_voice_values(values, default, name: str):
+    if values is None:
+        return default
+    coerced = tuple(values)
+    if len(coerced) != VOICE_COUNT:
+        raise ChiptuneError(f"{name} must contain {VOICE_COUNT} values.")
+    return coerced
+
+
 def _assign_voices(midi: pretty_midi.PrettyMIDI) -> list[list[_ChipNote]]:
     """Distribute MIDI notes across pulse-lead / pulse-harm / triangle / noise.
 
@@ -175,20 +212,25 @@ def _assign_voices(midi: pretty_midi.PrettyMIDI) -> list[list[_ChipNote]]:
 # ---------- per-voice render ----------
 
 def _render_voice(
-    voice_idx: int, notes: list[_ChipNote], total_samples: int, sample_rate: int,
+    voice_idx: int,
+    notes: list[_ChipNote],
+    total_samples: int,
+    sample_rate: int,
+    *,
+    gain_multiplier: float = 1.0,
 ) -> np.ndarray:
     buf = np.zeros(total_samples, dtype=np.float32)
-    if not notes:
+    if not notes or gain_multiplier <= 0.0:
         return buf
 
     if voice_idx == V_PULSE_LEAD:
-        wave_fn, env_fn, gain = _wave_pulse_lead, _env_pulse, 0.28
+        wave_fn, env_fn, gain = _wave_pulse_lead, _env_pulse, BASE_VOICE_GAINS[voice_idx]
     elif voice_idx == V_PULSE_HARM:
-        wave_fn, env_fn, gain = _wave_pulse_harm, _env_pulse, 0.22
+        wave_fn, env_fn, gain = _wave_pulse_harm, _env_pulse, BASE_VOICE_GAINS[voice_idx]
     elif voice_idx == V_TRIANGLE:
-        wave_fn, env_fn, gain = _wave_triangle, _env_triangle, 0.32
+        wave_fn, env_fn, gain = _wave_triangle, _env_triangle, BASE_VOICE_GAINS[voice_idx]
     else:
-        wave_fn, env_fn, gain = None, _env_drum, 0.22
+        wave_fn, env_fn, gain = None, _env_drum, BASE_VOICE_GAINS[voice_idx]
 
     for note in notes:
         start = int(note.start * sample_rate)
@@ -197,7 +239,7 @@ def _render_voice(
         if n <= 0 or start >= total_samples:
             continue
         n = min(n, total_samples - start)
-        vel_gain = (note.velocity / 127.0) * gain
+        vel_gain = (note.velocity / 127.0) * gain * gain_multiplier
 
         if voice_idx == V_NOISE:
             seed = (note.pitch * 1009 + start) & 0xFFFFFFFF
@@ -219,6 +261,9 @@ def render(
     output_wav_path: Path,
     *,
     sample_rate: int = SAMPLE_RATE,
+    voice_volumes: Sequence[float] | None = None,
+    voice_mutes: Sequence[bool] | None = None,
+    voice_solos: Sequence[bool] | None = None,
     cancel_check: Callable[[], bool] | None = None,
     log: Callable[[str], None] | None = None,
 ) -> Path:
@@ -236,6 +281,7 @@ def render(
         raise ChiptuneError("MIDI contains no notes to render.")
 
     voices = _assign_voices(midi)
+    voice_gains = _voice_mixer_gains(voice_volumes, voice_mutes, voice_solos)
     end_times = [n.end for vlist in voices for n in vlist]
     total_seconds = (max(end_times) if end_times else 0.0) + 1.0
     total_samples = int(total_seconds * sample_rate)
@@ -245,8 +291,15 @@ def render(
     for v_idx, notes in enumerate(voices):
         if cancel_check is not None and cancel_check():
             raise ChiptuneError("Render cancelled by user.")
-        log(f"  -> {_voice_label(v_idx)}: {len(notes)} notes")
-        mix += _render_voice(v_idx, notes, total_samples, sample_rate)
+        voice_status = "muted" if voice_gains[v_idx] <= 0.0 else f"{voice_gains[v_idx] * 100:.0f}%"
+        log(f"  -> {_voice_label(v_idx)}: {len(notes)} notes, {voice_status}")
+        mix += _render_voice(
+            v_idx,
+            notes,
+            total_samples,
+            sample_rate,
+            gain_multiplier=voice_gains[v_idx],
+        )
 
     peak = float(np.max(np.abs(mix)))
     if peak <= 0.0:
