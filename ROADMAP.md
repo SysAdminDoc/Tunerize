@@ -62,12 +62,13 @@
 - [ ] **"Convert chiptune voices to SF2"** — extract Tunerize's pulse/triangle/noise into a redistributable SF2
 
 ## v0.6.0 — Power-user features
-- [ ] Batch mode (folder of audio → folder of WAVs)
+- [x] Batch mode (folder of audio → folder of WAVs)
+  - Completed 2026-05-09: `batch` CLI subcommand (`tunerize batch /dir --recursive --ext .wav,.flac --continue-on-error`) plus UI "Batch…" button. Shares all conversion args with `convert`. `_BatchWorker(QThread)` drives sequential processing with per-file progress signals. CLI respects `--ext` glob filter and `--continue-on-error`; exit code 1 if any file fails.
 - [x] MP3 / OGG / FLAC output options
   - Completed 2026-05-09: format combo (WAV/FLAC/OGG/MP3) added to output row. Pipeline transcodes from intermediate WAV using soundfile (FLAC/OGG) or bundled ffmpeg via imageio-ffmpeg (MP3). `output_format` field on `PipelineConfig`; validated in `__post_init__`. `SUPPORTED_OUTPUT_FORMATS` constant in `audio_io.py`. `transcode_wav()` helper.
 - [ ] Genre presets (chiptune, lo-fi, orchestral, etc.) — bundles SF2 + cleanup settings
 - [x] CLI mode (`tunerize convert input.mp3 --sf2 nes.sf2 -o out.wav`)
-  - Completed 2026-05-09: `app/core/cli.py` with `run_cli(argv)` entry point; `_is_cli_invocation()` in `main.py` dispatches to CLI when first positional arg is `convert`. Full argparse interface: `--sf2`, `--engine`, `--format`, `--transpose`, `--quantize`, `--stem-separate`, `--no-midi`, `--min-note-ms`, `--sample-rate`, `--preset`, `--bank`, `--force-preset`. Progress bar to stdout; structured exit codes (0/1/130).
+  - Completed 2026-05-09: `app/core/cli.py` with `run_cli(argv)` entry point; `_is_cli_invocation()` in `main.py` dispatches to CLI when first positional arg is `convert` or `batch`. Full argparse interface: `--sf2`, `--engine`, `--format`, `--transpose`, `--quantize`, `--stem-separate`, `--no-midi`, `--min-note-ms`, `--sample-rate`, `--preset`, `--bank`, `--force-preset`. Progress bar to stdout; structured exit codes (0/1/130).
 - [ ] Per-track multi-channel output (one SF2 per stem)
 
 ## Backlog (no version yet)

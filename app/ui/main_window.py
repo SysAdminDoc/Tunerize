@@ -73,6 +73,46 @@ class _Worker(QThread):
             self.finished_err.emit(str(exc))
 
 
+class _BatchWorker(QThread):
+    file_started = Signal(str, int, int)   # filename, current_idx (1-based), total
+    progress = Signal(str, int)
+    log = Signal(str)
+    finished_all = Signal(list, list)      # ok_paths, failed [(name, reason)]
+
+    def __init__(self, configs: list[PipelineConfig]):
+        super().__init__()
+        self._configs = configs
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def run(self) -> None:
+        ok: list[Path] = []
+        failed: list[tuple[str, str]] = []
+        total = len(self._configs)
+
+        for idx, cfg in enumerate(self._configs, 1):
+            if self._cancelled:
+                break
+            self.file_started.emit(cfg.audio_path.name, idx, total)
+            try:
+                pipeline = ConversionPipeline(
+                    cfg,
+                    progress=lambda s, p: self.progress.emit(s, p),
+                    log=lambda m: self.log.emit(m),
+                    cancel_check=lambda: self._cancelled,
+                )
+                _, audio_out = pipeline.run()
+                ok.append(audio_out)
+            except Exception as exc:
+                reason = str(exc)
+                self.log.emit(f"FAILED: {cfg.audio_path.name}: {reason}")
+                failed.append((cfg.audio_path.name, reason))
+
+        self.finished_all.emit(ok, failed)
+
+
 class _PreviewWorker(QThread):
     finished_ok = Signal(object)
     finished_err = Signal(str)
@@ -147,6 +187,7 @@ class MainWindow(QMainWindow):
         self._has_soundfonts = False
         self._soundfont_infos: dict[str, SoundFontInfo] = {}
         self._soundfont_preset_widgets: list[QWidget] = []
+        self._batch_worker: _BatchWorker | None = None
         self.voice_name_labels: list[QLabel] = []
         self.voice_volume_sliders: list[QSlider] = []
         self.voice_value_labels: list[QLabel] = []
@@ -422,6 +463,11 @@ class MainWindow(QMainWindow):
         self.convert_btn.setDefault(True)
         self.convert_btn.clicked.connect(self._on_convert)
 
+        self.batch_btn = QPushButton("Batch…")
+        self.batch_btn.setMinimumHeight(46)
+        self.batch_btn.setToolTip("Convert all audio files in a folder using the current settings.")
+        self.batch_btn.clicked.connect(self._on_batch)
+
         self.cancel_btn = QPushButton("Cancel")
         self.cancel_btn.setMinimumHeight(46)
         self.cancel_btn.setEnabled(False)
@@ -429,6 +475,7 @@ class MainWindow(QMainWindow):
 
         row = QHBoxLayout()
         row.addWidget(self.convert_btn, 1)
+        row.addWidget(self.batch_btn)
         row.addWidget(self.cancel_btn)
         return row
 
@@ -746,6 +793,7 @@ class MainWindow(QMainWindow):
             enabled and sf2_mode and self._has_soundfonts and preset_available and not preview_running
         )
         self.convert_btn.setEnabled(enabled and not preview_running)
+        self.batch_btn.setEnabled(enabled and not preview_running)
         self.cancel_btn.setEnabled(self._busy)
         self.setAcceptDrops(enabled)
         # Show the FluidR3 quick-download button only when no soundfonts are present
@@ -867,11 +915,108 @@ class MainWindow(QMainWindow):
         self._worker.start()
 
     def _on_cancel(self) -> None:
-        if self._worker is not None:
+        if self._batch_worker is not None and self._batch_worker.isRunning():
+            self._batch_worker.cancel()
+            self.cancel_btn.setEnabled(False)
+            self.stage_label.setText("Cancelling batch...")
+            self._log("Batch cancellation requested...")
+        elif self._worker is not None:
             self._worker.cancel()
             self.cancel_btn.setEnabled(False)
             self.stage_label.setText("Cancelling...")
             self._log("Cancellation requested...")
+
+    def _on_batch(self) -> None:
+        folder = QFileDialog.getExistingDirectory(
+            self, "Choose folder to batch-convert", str(Path.home())
+        )
+        if not folder:
+            return
+        folder_path = Path(folder)
+
+        chiptune_mode = self.mode_chiptune.isChecked()
+        sf2_path: Path | None = None
+        if not chiptune_mode:
+            sf2_data = self.sf_combo.currentData()
+            if not sf2_data:
+                QMessageBox.warning(self, "Missing SoundFont", "Pick a SoundFont, or switch to Chiptune Mode.")
+                return
+            sf2_path = Path(sf2_data)
+        elif not self._chiptune_mixer_has_audible_voice():
+            QMessageBox.warning(self, "Mixer muted", "Enable at least one chiptune voice first.")
+            return
+
+        from app.core.audio_io import SUPPORTED_INPUT_EXTS
+
+        audio_files = sorted(p for p in folder_path.iterdir() if p.is_file() and p.suffix.lower() in SUPPORTED_INPUT_EXTS)
+        if not audio_files:
+            QMessageBox.information(self, "No audio files", f"No supported audio files found in:\n{folder_path}")
+            return
+
+        out_dir_text = self.out_edit.text().strip()
+        out_dir = Path(out_dir_text) if out_dir_text else folder_path
+        voice_volumes, voice_mutes, voice_solos = self._chiptune_voice_settings()
+        sf2_bank, sf2_preset = self._selected_soundfont_preset()
+
+        configs: list[PipelineConfig] = []
+        for audio_path in audio_files:
+            try:
+                configs.append(PipelineConfig(
+                    audio_path=audio_path,
+                    output_dir=out_dir,
+                    sf2_path=sf2_path,
+                    use_chiptune_engine=chiptune_mode,
+                    transpose=self.transpose_spin.value(),
+                    quantize=self.quantize_check.isChecked(),
+                    quantize_grid=self.quantize_combo.currentText(),
+                    sf2_bank=sf2_bank,
+                    sf2_preset=sf2_preset,
+                    force_preset=self.force_preset_check.isChecked(),
+                    forced_bank=sf2_bank,
+                    forced_preset=sf2_preset,
+                    min_note_ms=self.min_note_spin.value(),
+                    stem_separate=self.demucs_check.isChecked(),
+                    export_midi=self.export_midi_check.isChecked(),
+                    output_format=self.format_combo.currentData(),
+                    chiptune_engine=self._selected_chiptune_engine(),
+                    chiptune_voice_volumes=voice_volumes,
+                    chiptune_voice_mutes=voice_mutes,
+                    chiptune_voice_solos=voice_solos,
+                ))
+            except ValueError as exc:
+                self._log(f"Skipping {audio_path.name}: {exc}")
+
+        if not configs:
+            QMessageBox.warning(self, "No valid files", "All files were skipped due to configuration errors.")
+            return
+
+        self._set_busy(True)
+        self.progress_bar.setValue(0)
+        self.log_panel.clear()
+        self._log(f"Batch: {len(configs)} file(s) from {folder_path}")
+
+        self._batch_worker = _BatchWorker(configs)
+        self._batch_worker.file_started.connect(self._on_batch_file_started)
+        self._batch_worker.progress.connect(self._on_progress)
+        self._batch_worker.log.connect(self._log)
+        self._batch_worker.finished_all.connect(self._on_batch_done)
+        self._batch_worker.start()
+
+    @Slot(str, int, int)
+    def _on_batch_file_started(self, filename: str, current: int, total: int) -> None:
+        self.stage_label.setText(f"[{current}/{total}] {filename}")
+        self.progress_bar.setValue(int(100 * (current - 1) / total))
+        self._log(f"\n[{current}/{total}] {filename}")
+
+    @Slot(list, list)
+    def _on_batch_done(self, ok_paths: list, failed: list) -> None:
+        self._set_busy(False)
+        self.progress_bar.setValue(100)
+        summary = f"Batch complete: {len(ok_paths)} succeeded, {len(failed)} failed."
+        self.stage_label.setText(summary)
+        self._log(f"\n{summary}")
+        for name, reason in failed:
+            self._log(f"  FAILED: {name}: {reason}")
 
     @Slot(str, int)
     def _on_progress(self, stage: str, pct: int) -> None:

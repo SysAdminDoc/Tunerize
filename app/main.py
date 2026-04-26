@@ -32,7 +32,7 @@ def _bundle_ffmpeg_on_path() -> None:
 def _is_cli_invocation() -> bool:
     """Return True when the first non-option argument looks like a CLI sub-command."""
     positional = [a for a in sys.argv[1:] if not a.startswith("-")]
-    return bool(positional) and positional[0] in ("convert",)
+    return bool(positional) and positional[0] in ("convert", "batch")
 
 
 def main() -> int:

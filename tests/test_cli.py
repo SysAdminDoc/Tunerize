@@ -126,3 +126,80 @@ def test_run_cli_success_returns_zero(tmp_path):
     with patch("app.core.pipeline.ConversionPipeline.run", return_value=(midi_out, wav_out)):
         result = run_cli(["convert", str(audio)])
     assert result == 0
+
+
+# ── batch subcommand: parser ──────────────────────────────────────────────────
+
+def test_parser_batch_defaults():
+    parser = _build_parser()
+    args = parser.parse_args(["batch", "/some/dir"])
+    assert args.input_dir == "/some/dir"
+    assert args.recursive is False
+    assert args.continue_on_error is False
+    assert args.ext is None
+
+
+def test_parser_batch_recursive():
+    parser = _build_parser()
+    args = parser.parse_args(["batch", "/dir", "--recursive"])
+    assert args.recursive is True
+
+
+def test_parser_batch_ext():
+    parser = _build_parser()
+    args = parser.parse_args(["batch", "/dir", "--ext", "wav,flac"])
+    assert args.ext == "wav,flac"
+
+
+def test_parser_batch_continue_on_error():
+    parser = _build_parser()
+    args = parser.parse_args(["batch", "/dir", "--continue-on-error"])
+    assert args.continue_on_error is True
+
+
+def test_parser_batch_inherits_conversion_args():
+    parser = _build_parser()
+    args = parser.parse_args(["batch", "/dir", "--format", "flac", "--transpose", "2"])
+    assert args.format == "flac"
+    assert args.transpose == 2
+
+
+# ── batch subcommand: run_cli behavior ───────────────────────────────────────
+
+def test_run_cli_batch_missing_dir(tmp_path):
+    result = run_cli(["batch", str(tmp_path / "nonexistent")])
+    assert result == 1
+
+
+def test_run_cli_batch_empty_dir(tmp_path):
+    result = run_cli(["batch", str(tmp_path)])
+    assert result == 1
+
+
+def test_run_cli_batch_success(tmp_path):
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"RIFF")
+    wav_out = tmp_path / "a_chiptune.wav"
+
+    with patch("app.core.pipeline.ConversionPipeline.run", return_value=(None, wav_out)):
+        result = run_cli(["batch", str(tmp_path)])
+    assert result == 0
+
+
+def test_run_cli_batch_ext_filter(tmp_path):
+    (tmp_path / "a.wav").write_bytes(b"RIFF")
+    (tmp_path / "b.txt").write_text("not audio")
+
+    wav_out = tmp_path / "a_chiptune.wav"
+    with patch("app.core.pipeline.ConversionPipeline.run", return_value=(None, wav_out)):
+        result = run_cli(["batch", str(tmp_path), "--ext", ".wav"])
+    assert result == 0
+
+
+def test_run_cli_batch_one_failure_returns_one(tmp_path):
+    audio = tmp_path / "bad.wav"
+    audio.write_bytes(b"RIFF")
+
+    with patch("app.core.pipeline.ConversionPipeline.run", side_effect=Exception("boom")):
+        result = run_cli(["batch", str(tmp_path)])
+    assert result == 1
