@@ -3,14 +3,16 @@
 v0.2.0 started with one provider:
     - musical-artifacts.com  (REST/JSON, per-artifact license, direct file URL)
     - github.com topic:soundfont (repository search, archive downloads)
+    - reddit.com/r/soundfonts (community posts, direct links when available)
 
 The `Provider` protocol is the integration point. Future providers can include
-Reddit r/soundfonts trending and Polyphone if/when their API opens.
+Polyphone if/when their API opens.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import time
 from collections.abc import Callable
@@ -284,6 +286,142 @@ class GitHubTopicProvider:
             path.write_text(json.dumps(data), encoding="utf-8")
 
 
+# ---------- reddit.com/r/soundfonts ----------
+
+class RedditSoundFontsProvider:
+    """Search r/soundfonts for community-posted packs and leads.
+
+    Reddit posts are often discussions or point to file-hosting pages, so not
+    every result is directly installable. Results without a direct `.sf2` /
+    archive URL still appear in the browser as discovery entries.
+    """
+
+    name = "reddit r/soundfonts"
+    SEARCH_URL = "https://www.reddit.com/r/soundfonts/search.json"
+    TOP_URL = "https://www.reddit.com/r/soundfonts/top.json"
+    DEFAULT_QUERY = "soundfont OR sf2 OR sf3"
+
+    def __init__(
+        self,
+        session: requests.Session | None = None,
+        cache_dir: Path | None = None,
+        cache_ttl_seconds: int = 1800,
+    ):
+        self._session = session or requests.Session()
+        self._session.headers.setdefault("User-Agent", USER_AGENT)
+        self._session.headers.setdefault("Accept", "application/json")
+        self._cache_dir = cache_dir
+        self._cache_ttl = cache_ttl_seconds
+        if cache_dir is not None:
+            cache_dir.mkdir(parents=True, exist_ok=True)
+
+    def search(self, query: str = "", *, limit: int = 25) -> list[SoundFontResult]:
+        per_page = str(min(max(limit, 1), 50))
+        if query:
+            url = self.SEARCH_URL
+            params = {
+                "q": _reddit_query(query),
+                "restrict_sr": "1",
+                "sort": "relevance",
+                "t": "all",
+                "type": "link",
+                "raw_json": "1",
+                "limit": per_page,
+            }
+        else:
+            url = self.TOP_URL
+            params = {
+                "t": "year",
+                "raw_json": "1",
+                "limit": per_page,
+            }
+
+        cache_key = self._cache_key(url, params)
+        cached = self._get_cache(cache_key)
+        if cached is not None:
+            data = cached
+        else:
+            try:
+                r = self._session.get(url, params=params, timeout=DEFAULT_TIMEOUT)
+                r.raise_for_status()
+            except requests.RequestException as e:
+                status = getattr(getattr(e, "response", None), "status_code", None)
+                if status == 429:
+                    raise BrowserError("Reddit rate limit reached. Wait a minute, then search again.") from e
+                raise BrowserError(f"Reddit r/soundfonts fetch failed: {e}") from e
+            try:
+                data = r.json()
+            except ValueError as e:
+                raise BrowserError(f"Reddit returned non-JSON: {e}") from e
+            self._set_cache(cache_key, data)
+
+        children = data.get("data", {}).get("children") if isinstance(data, dict) else None
+        if not isinstance(children, list):
+            raise BrowserError("Unexpected response shape from Reddit")
+
+        results: list[SoundFontResult] = []
+        for child in children[:limit]:
+            post = child.get("data") if isinstance(child, dict) else None
+            if not isinstance(post, dict) or post.get("over_18"):
+                continue
+            permalink = post.get("permalink") or ""
+            if permalink and permalink.startswith("/"):
+                permalink = f"https://www.reddit.com{permalink}"
+            external_url = post.get("url_overridden_by_dest") or post.get("url") or ""
+            selftext = (post.get("selftext") or "").strip()
+            download_url = _reddit_direct_download_url(external_url, selftext)
+            tags = ("soundfont", "reddit", "community")
+            tags = (*tags, "direct-download") if download_url else (*tags, "discussion")
+            description = _reddit_description(
+                selftext=selftext,
+                external_url=external_url,
+                score=_safe_int(post.get("score")),
+                comments=_safe_int(post.get("num_comments")),
+                direct_download=bool(download_url),
+            )
+            results.append(
+                SoundFontResult(
+                    source=self.name,
+                    name=post.get("title") or "(untitled Reddit post)",
+                    author=post.get("author"),
+                    description=description,
+                    license="Community post - verify before use",
+                    file_url=download_url,
+                    file_size_bytes=None,
+                    tags=tags,
+                    download_count=_safe_int(post.get("score")),
+                    detail_url=permalink or external_url,
+                    download_name=_filename_from_url(download_url) if download_url else None,
+                )
+            )
+
+        return [r for r in results if r.detail_url]
+
+    def _cache_key(self, endpoint: str, params: dict) -> str:
+        raw = endpoint + "?" + urlencode(sorted(params.items()))
+        return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+    def _get_cache(self, key: str):
+        if self._cache_dir is None:
+            return None
+        path = self._cache_dir / f"reddit-{key}.json"
+        if not path.exists():
+            return None
+        if time.time() - path.stat().st_mtime > self._cache_ttl:
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def _set_cache(self, key: str, data) -> None:
+        if self._cache_dir is None:
+            return
+        path = self._cache_dir / f"reddit-{key}.json"
+        with suppress(OSError):
+            path.write_text(json.dumps(data), encoding="utf-8")
+
+
 # ---------- downloader ----------
 
 def download_to_library(
@@ -382,6 +520,49 @@ def _github_query(query: str) -> str:
         terms.append(query)
         terms.append("in:name,description,readme")
     return " ".join(terms)
+
+
+def _reddit_query(query: str) -> str:
+    return query.strip() or RedditSoundFontsProvider.DEFAULT_QUERY
+
+
+def _reddit_direct_download_url(*texts: str) -> str:
+    for text in texts:
+        if not text:
+            continue
+        for url in _extract_urls(text):
+            if _is_direct_download_url(url):
+                return url
+    return ""
+
+
+def _extract_urls(text: str) -> tuple[str, ...]:
+    urls = re.findall(r"https?://[^\s<>\]\)\"']+", text)
+    return tuple(url.rstrip(".,;:!?") for url in urls)
+
+
+def _is_direct_download_url(url: str) -> bool:
+    return urlparse(url).path.lower().endswith((".sf2", ".sf3", ".sfz", ".zip", ".7z"))
+
+
+def _reddit_description(
+    *,
+    selftext: str,
+    external_url: str,
+    score: int | None,
+    comments: int | None,
+    direct_download: bool,
+) -> str:
+    parts = []
+    if selftext:
+        parts.append(selftext[:700])
+    elif external_url:
+        parts.append(f"Linked post: {external_url}")
+    if score is not None or comments is not None:
+        parts.append(f"Reddit score: {score or 0}; comments: {comments or 0}.")
+    if not direct_download:
+        parts.append("No direct SoundFont download URL was detected; open the Reddit post to review links.")
+    return "\n\n".join(parts)
 
 
 def _safe_int(value) -> int | None:

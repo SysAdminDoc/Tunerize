@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import struct
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
@@ -10,8 +11,10 @@ from app.core.soundfont_browser import (
     BrowserError,
     GitHubTopicProvider,
     MusicalArtifactsProvider,
+    RedditSoundFontsProvider,
     SoundFontResult,
     _github_query,
+    _reddit_query,
     download_to_library,
 )
 
@@ -232,6 +235,124 @@ def test_github_provider_raises_on_bad_shape():
 
 def test_github_query_without_terms_only_uses_topic():
     assert _github_query("") == "topic:soundfont"
+
+
+def _reddit_post(**overrides):
+    base = {
+        "title": "Great SNES SoundFont pack",
+        "author": "redditor",
+        "selftext": "Download https://files.example.com/snes-pack.zip and verify the license.",
+        "url_overridden_by_dest": "https://files.example.com/snes-pack.zip",
+        "url": "https://files.example.com/snes-pack.zip",
+        "permalink": "/r/soundfonts/comments/abc123/great_snes_soundfont_pack/",
+        "score": 37,
+        "num_comments": 5,
+        "over_18": False,
+    }
+    base.update(overrides)
+    return {"kind": "t3", "data": base}
+
+
+def _reddit_listing(children):
+    return {"kind": "Listing", "data": {"children": children, "after": None, "before": None}}
+
+
+def test_reddit_provider_top_parses_direct_download_posts():
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(json_data=_reddit_listing([_reddit_post()]))
+
+    provider = RedditSoundFontsProvider(session=session)
+    results = provider.search("")
+
+    assert len(results) == 1
+    r = results[0]
+    assert r.source == "reddit r/soundfonts"
+    assert r.name == "Great SNES SoundFont pack"
+    assert r.author == "redditor"
+    assert r.file_url == "https://files.example.com/snes-pack.zip"
+    assert r.download_name == "snes-pack.zip"
+    assert r.download_count == 37
+    assert "direct-download" in r.tags
+
+
+def test_reddit_provider_search_uses_subreddit_search_endpoint():
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(json_data=_reddit_listing([]))
+
+    provider = RedditSoundFontsProvider(session=session)
+    provider.search("piano")
+
+    url = session.get.call_args.args[0]
+    _, kwargs = session.get.call_args
+    assert url.endswith("/r/soundfonts/search.json")
+    assert kwargs["params"]["q"] == "piano"
+    assert kwargs["params"]["restrict_sr"] == "1"
+
+
+def test_reddit_provider_includes_discussion_without_direct_download():
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(
+        json_data=_reddit_listing([
+            _reddit_post(
+                selftext="Does anyone know where to find this pack?",
+                url_overridden_by_dest="https://www.reddit.com/r/soundfonts/comments/abc123/",
+            )
+        ])
+    )
+
+    provider = RedditSoundFontsProvider(session=session)
+    results = provider.search()
+
+    assert len(results) == 1
+    assert results[0].file_url == ""
+    assert "discussion" in results[0].tags
+    assert "No direct SoundFont download URL" in results[0].description
+
+
+def test_reddit_provider_caches_to_disk(tmp_path):
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(json_data=_reddit_listing([_reddit_post()]))
+
+    provider = RedditSoundFontsProvider(session=session, cache_dir=tmp_path / "cache")
+    r1 = provider.search("nes")
+    r2 = provider.search("nes")
+
+    assert r1 == r2
+    assert session.get.call_count == 1
+
+
+def test_reddit_provider_raises_on_bad_shape():
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(json_data=[])
+
+    provider = RedditSoundFontsProvider(session=session)
+    with pytest.raises(BrowserError, match="Reddit"):
+        provider.search()
+
+
+def test_reddit_provider_reports_rate_limit():
+    from requests.exceptions import HTTPError
+
+    session = MagicMock()
+    session.headers = {}
+    resp = _fake_response(status_code=429)
+    err = HTTPError("429")
+    err.response = SimpleNamespace(status_code=429)
+    resp.raise_for_status.side_effect = err
+    session.get.return_value = resp
+
+    provider = RedditSoundFontsProvider(session=session)
+    with pytest.raises(BrowserError, match="rate limit"):
+        provider.search()
+
+
+def test_reddit_query_without_terms_uses_default_terms():
+    assert _reddit_query("") == "soundfont OR sf2 OR sf3"
 
 
 def _valid_sf2_bytes() -> bytes:

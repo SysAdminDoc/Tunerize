@@ -1,6 +1,7 @@
 """Online SoundFont browser dialog — modal search/install UI."""
 from __future__ import annotations
 
+from html import escape
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -34,6 +35,7 @@ from app.core.soundfont_browser import (
     GitHubTopicProvider,
     MusicalArtifactsProvider,
     Provider,
+    RedditSoundFontsProvider,
     SoundFontResult,
     download_to_library,
 )
@@ -88,7 +90,7 @@ class _DownloadWorker(QThread):
 
 
 class _ResultsModel(QAbstractTableModel):
-    HEADERS = ("Name", "Author", "Size", "License", "Downloads / Stars")
+    HEADERS = ("Name", "Author", "Size", "License", "Downloads / Stars / Score")
 
     def __init__(self):
         super().__init__()
@@ -151,6 +153,7 @@ class BrowserDialog(QDialog):
         self._providers: dict[str, Provider] = {
             "musical-artifacts.com": MusicalArtifactsProvider(cache_dir=cache_dir),
             "github.com topic:soundfont": GitHubTopicProvider(cache_dir=cache_dir),
+            "reddit r/soundfonts": RedditSoundFontsProvider(cache_dir=cache_dir),
         }
         self._provider = self._providers["musical-artifacts.com"]
 
@@ -292,24 +295,31 @@ class BrowserDialog(QDialog):
             self.open_web_btn.setEnabled(False)
             return
         self._show_detail(row)
-        self.install_btn.setEnabled(True)
+        self.install_btn.setEnabled(bool(row.file_url))
+        self.install_btn.setToolTip("" if row.file_url else "Open the Reddit post to review its download links.")
         self.open_web_btn.setEnabled(bool(row.detail_url))
 
     def _show_detail(self, r: SoundFontResult) -> None:
-        tags_html = " ".join(f"<code>{t}</code>" for t in r.tags) or "—"
+        tags_html = " ".join(f"<code>{escape(t)}</code>" for t in r.tags) or "—"
         size = _format_size(r.file_size_bytes)
-        desc = (r.description or "<i>No description.</i>").replace("\n", "<br>")
+        desc = escape(r.description).replace("\n", "<br>") if r.description else "<i>No description.</i>"
+        source_note = (
+            "Direct download detected."
+            if r.file_url
+            else "No direct download detected. Open the source page to review links."
+        )
         html = (
-            f"<h3 style='margin-bottom:4px'>{r.name}</h3>"
+            f"<h3 style='margin-bottom:4px'>{escape(r.name)}</h3>"
             f"<p style='color:#a6adc8;margin:0'>"
-            f"<b>Author:</b> {r.author or '—'} &nbsp;·&nbsp; "
-            f"<b>License:</b> {r.license} &nbsp;·&nbsp; "
+            f"<b>Author:</b> {escape(r.author or '—')} &nbsp;·&nbsp; "
+            f"<b>License:</b> {escape(r.license)} &nbsp;·&nbsp; "
             f"<b>Size:</b> {size}</p>"
             f"<p><b>Tags:</b> {tags_html}</p>"
             f"<p>{desc}</p>"
             f"<p style='color:#6c7086'>"
-            f"<b>Source:</b> {r.source} &nbsp;·&nbsp; "
-            f"<a href='{r.detail_url}'>web page</a></p>"
+            f"<b>Source:</b> {escape(r.source)} &nbsp;·&nbsp; "
+            f"{escape(source_note)} &nbsp;·&nbsp; "
+            f"<a href='{escape(r.detail_url, quote=True)}'>web page</a></p>"
         )
         self.detail_panel.setHtml(html)
 

@@ -37,7 +37,8 @@
 - [ ] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis
 - [x] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)
   - Completed 2026-04-25: Advanced settings now control pulse 1, pulse 2, triangle, and noise voice volume/mute/solo before rendering.
-- [ ] **Reddit r/soundfonts** browser provider (trending community packs)
+- [x] **Reddit r/soundfonts** browser provider (trending community packs)
+  - Completed 2026-04-26: Browser source selector now searches Reddit r/soundfonts top/search listings, surfaces score/comment context, installs direct SoundFont/archive URLs when present, and leaves discussion-only posts as open-in-browser leads.
 - [x] **GitHub topic:soundfont** browser provider
   - Completed 2026-04-25: Browser source selector now searches GitHub repositories tagged `topic:soundfont`, shows license/star metadata, and downloads repositories as ZIP bundles.
 

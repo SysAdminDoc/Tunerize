@@ -11,11 +11,13 @@ All notable changes to Tunerize are documented here. Format follows [Keep a Chan
 - Game Boy DMG chiptune engine option with two pulse voices, a 4-bit custom wave channel, and noise.
 - GitHub `topic:soundfont` browser source with license-aware repository results and ZIP bundle downloads.
 - SoundFont preset dropdown parsed from `.sf2` / `.sf3` preset headers, plus a five-second FluidSynth preview button.
+- Reddit r/soundfonts browser source for community leads, direct `.sf2` / archive links, and discussion-only results that open in the browser.
 
 ### Changed
 - Conversion now locks input/settings controls while work is running and treats user cancellation as a normal stopped state instead of a critical failure dialog.
 - Main-window and browser table styling tightened for clearer grouping, focus, and selected states.
 - SoundFont rendering starts from the selected bank/program, and force-preset mode now uses that selected bank/program instead of a preset-number-only spinbox.
+- Browser details now escape provider text before rendering HTML and disable install for discovery-only rows without a direct download URL.
 
 ## v0.2.0 — 2026-04-25
 
@@ -24,7 +26,7 @@ Online SoundFont discovery — search public libraries from inside the app.
 ### Added
 - **Online SoundFont browser** — modal dialog (`Browse Online…` button next to the SoundFont dropdown) that searches public libraries and installs straight into `soundfonts/`.
   - First provider: **musical-artifacts.com** (REST/JSON API, per-artifact license metadata, direct file URLs, 60 req/min cached).
-  - Provider abstraction in [app/core/soundfont_browser.py](app/core/soundfont_browser.py) — Reddit r/soundfonts trending and a GitHub `topic:soundfont` provider can drop in next without UI changes.
+  - Provider abstraction in [app/core/soundfont_browser.py](app/core/soundfont_browser.py) — additional sources can drop in without UI rewrites.
 - Per-result detail pane: name, author, license, size, tags, description, link to source web page.
 - Streaming download with cancel + progress (bytes / total or indeterminate).
 - Post-download SF2 validation (RIFF/sfbk header check) — corrupt downloads are rejected before they enter the library.
