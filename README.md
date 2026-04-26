@@ -23,6 +23,7 @@ One window, one button, no cloud.
 - **Built-in chiptune engines** — NES-style (2 pulse + triangle + noise) and Game Boy DMG-style (2 pulse + custom wave + noise) synths ship in the app. Zero install, instant retro.
 - **Online SoundFont browser** — search and install SF2s from public libraries (musical-artifacts.com plus GitHub `topic:soundfont`) without leaving the app. License + author shown for every result.
 - **Bring-your-own SoundFonts** — Drop `.sf2` / `.sf3` into `soundfonts/`; Tunerize scans, validates, lists them, and keeps your recent picks at the top.
+- **Preset-aware SoundFont workflow** — Tunerize reads bank/program names from `.sf2` / `.sf3` files, lets you choose a preset, and can render a short preview before conversion.
 - **Drag-and-drop input** — Drop supported audio files directly on the window, or use the file picker.
 - **One-click conversion** — Open audio, pick mode, hit Convert. WAV out.
 - **Stem separation (optional)** — Pre-split mixed tracks with Demucs for cleaner transcription on full songs.
@@ -78,20 +79,21 @@ Three options:
 2. **Choose render mode**:
    - **Chiptune Mode** — uses the built-in NES-style synth. No SoundFont required.
    - **SoundFont Mode** — pick a `.sf2` from the dropdown, click *Add…* to import one from disk, or click **Browse Online…** to grab one from a public library. Recently installed or used SoundFonts appear first.
-3. *(Optional)* Toggle **Stem separation** if your input is a mixed song.
-4. *(Optional)* Open **Advanced** for transpose, quantize grid, chip engine, chiptune voice mix, force-preset mode, output folder.
-5. **Convert.** Watch the progress bar and log panel.
-6. Output lands at `<input_dir>/<song>__chiptune.wav` (or `__<soundfont>.wav`), plus `.mid` if you opted in.
+3. *(Optional)* In **Advanced**, choose a SoundFont preset and click **Preview** to audition a five-second phrase. Enable **Force all notes to selected preset** for non-GM banks.
+4. *(Optional)* Toggle **Stem separation** if your input is a mixed song.
+5. *(Optional)* Open **Advanced** for transpose, quantize grid, chip engine, chiptune voice mix, force-preset mode, output folder.
+6. **Convert.** Watch the progress bar and log panel.
+7. Output lands at `<input_dir>/<song>__chiptune.wav` (or `__<soundfont>.wav`), plus `.mid` if you opted in.
 
 ---
 
-## Limitations (read this before complaining)
+## Limitations
 
 - **Basic Pitch is best on monophonic / lightly polyphonic audio.** Single instruments, melodies, vocals: great. Full mixed songs: messy without stem separation.
 - **Stem separation adds 1–3 minutes per song** (Demucs is heavy). It's opt-in for that reason.
 - **Chiptune Mode is 4-voice polyphonic** (NES-style). Dense polyphonic input gets thinned via voice-stealing. That's the retro authenticity, not a bug.
-- **General MIDI assumption (SoundFont mode):** Tunerize maps Basic Pitch's single output channel to preset 0 of the SoundFont's bank 0. For GM-compatible SoundFonts this is "Acoustic Grand Piano." Use *Force preset* to point at a specific instrument.
-- **No realtime preview yet** — output is rendered offline to WAV.
+- **General MIDI assumption (SoundFont mode):** Tunerize starts from the selected SoundFont preset. For GM-compatible SoundFonts this is usually bank 0, preset 0: "Acoustic Grand Piano." Use *Force all notes to selected preset* for non-GM banks.
+- **No realtime monitoring yet** — preset preview and conversion are rendered offline to WAV.
 
 ---
 
@@ -100,7 +102,7 @@ Three options:
 See [ROADMAP.md](ROADMAP.md). Highlights:
 
 - v0.2 (this release): Online SoundFont browser
-- v0.3: Bundled FluidSynth, Game Boy / SNES / Genesis chiptune engines, more browser providers (Reddit, GitHub)
+- v0.3: Bundled FluidSynth, Windows binary, FluidR3 onboarding, SNES / Genesis chiptune engines, Reddit provider
 - v0.4: Polyphone integration (bundled SF2 editor — GPL, ships in installer)
 - v0.5: Built-in SF2 creator (sample → SF2, native, no external tool)
 - v0.6: MP3/OGG/FLAC export, batch mode, genre presets, CLI mode

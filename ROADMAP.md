@@ -25,7 +25,8 @@
 - [ ] Bundle `fluidsynth.exe` (no `winget` requirement)
 - [ ] PyInstaller one-file Windows binary
 - [ ] Auto-download FluidR3 GM on first run (uses the v0.2 browser plumbing)
-- [ ] Per-preset dropdown with 5-second preview button
+- [x] Per-preset dropdown with 5-second preview button
+  - Completed 2026-04-25: SoundFont mode now parses `phdr` preset headers, exposes bank/program names in Advanced settings, and renders a five-second FluidSynth audition phrase for the selected preset.
 - [x] Recent-soundfont MRU list in dropdown
   - Completed 2026-04-25: persists the last five used or installed `.sf2` / `.sf3` files and shows available matches first.
 - [x] Drag-and-drop audio onto window

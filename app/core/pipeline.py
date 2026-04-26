@@ -30,7 +30,10 @@ class PipelineConfig:
     transpose: int = 0
     quantize: bool = False
     quantize_grid: str = "1/16"
+    sf2_bank: int = 0
+    sf2_preset: int = 0
     force_preset: bool = False
+    forced_bank: int = 0
     forced_preset: int = 0
     min_note_ms: int = 58
     stem_separate: bool = False
@@ -134,7 +137,10 @@ class ConversionPipeline:
                 sf2_path=cfg.sf2_path,  # type: ignore[arg-type]
                 output_wav_path=wav_out,
                 sample_rate=cfg.sample_rate,
+                bank=cfg.sf2_bank,
+                preset=cfg.sf2_preset,
                 force_preset=cfg.force_preset,
+                forced_bank=cfg.forced_bank,
                 forced_preset=cfg.forced_preset,
                 cancel_check=self._cancel_check,
             )

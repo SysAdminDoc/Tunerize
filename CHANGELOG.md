@@ -10,10 +10,12 @@ All notable changes to Tunerize are documented here. Format follows [Keep a Chan
 - Chiptune voice mixer in Advanced settings with per-voice volume, mute, and solo controls for pulse 1, pulse 2, triangle, and noise.
 - Game Boy DMG chiptune engine option with two pulse voices, a 4-bit custom wave channel, and noise.
 - GitHub `topic:soundfont` browser source with license-aware repository results and ZIP bundle downloads.
+- SoundFont preset dropdown parsed from `.sf2` / `.sf3` preset headers, plus a five-second FluidSynth preview button.
 
 ### Changed
 - Conversion now locks input/settings controls while work is running and treats user cancellation as a normal stopped state instead of a critical failure dialog.
 - Main-window and browser table styling tightened for clearer grouping, focus, and selected states.
+- SoundFont rendering starts from the selected bank/program, and force-preset mode now uses that selected bank/program instead of a preset-number-only spinbox.
 
 ## v0.2.0 — 2026-04-25
 

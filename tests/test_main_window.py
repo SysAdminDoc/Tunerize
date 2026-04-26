@@ -87,6 +87,46 @@ def test_main_window_engine_selector_updates_voice_labels(qtbot, tmp_path):
     assert window.voice_name_labels[2].text() == "Wave channel"
 
 
+def test_main_window_populates_soundfont_presets(qtbot, tmp_path):
+    library = tmp_path / "soundfonts"
+    library.mkdir()
+    sf2 = _write_fake_sf2_with_presets(library / "presets.sf2")
+
+    window = MainWindow(soundfonts_dir=library, settings_path=tmp_path / "settings.json")
+    qtbot.addWidget(window)
+    window.mode_sf2.setChecked(True)
+
+    assert window.sf_combo.currentData() == str(sf2)
+    assert window.preset_combo.itemText(0) == "0:0 - Piano"
+    assert window._find_preset_data((1, 5)) >= 0
+
+    window.preset_combo.setCurrentIndex(window._find_preset_data((1, 5)))
+
+    assert window._selected_soundfont_preset() == (1, 5)
+    assert window.preview_preset_btn.isEnabled()
+
+
 def _write_fake_sf2(path: Path) -> Path:
     path.write_bytes(b"RIFF" + struct.pack("<I", 4) + b"sfbk" + b"\x00" * 32)
     return path
+
+
+def _write_fake_sf2_with_presets(path: Path) -> Path:
+    records = b"".join(
+        [
+            _phdr_record("Piano", preset=0, bank=0, bag_index=0),
+            _phdr_record("Warm Pad", preset=5, bank=1, bag_index=1),
+            _phdr_record("EOP", preset=0, bank=0, bag_index=2),
+        ]
+    )
+    phdr = b"phdr" + struct.pack("<I", len(records)) + records
+    pdta_payload = b"pdta" + phdr
+    list_chunk = b"LIST" + struct.pack("<I", len(pdta_payload)) + pdta_payload
+    riff_payload = b"sfbk" + list_chunk
+    path.write_bytes(b"RIFF" + struct.pack("<I", len(riff_payload)) + riff_payload)
+    return path
+
+
+def _phdr_record(name: str, *, preset: int, bank: int, bag_index: int) -> bytes:
+    raw_name = name.encode("latin-1")[:20].ljust(20, b"\x00")
+    return struct.pack("<20sHHHIII", raw_name, preset, bank, bag_index, 0, 0, 0)

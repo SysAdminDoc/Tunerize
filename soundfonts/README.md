@@ -22,3 +22,5 @@ Three reasons:
 3. **Personal taste** — the 8-bit folks want chiptune, the orchestrators want SC-55, the lo-fi folks want Mellotron. No default fits all.
 
 Use **Browse Online…** in SoundFont mode to search public libraries from inside Tunerize. GitHub results download as ZIP bundles; unpack them and import any `.sf2` / `.sf3` files inside. First-run FluidR3 GM onboarding is still planned.
+
+After a SoundFont is selected, open **Advanced settings** to choose a bank/preset by name and preview it before conversion. The preview uses FluidSynth, so it needs the same FluidSynth runtime as SoundFont rendering.

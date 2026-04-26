@@ -53,6 +53,9 @@ def test_config_defaults():
     assert cfg.sample_rate == 44100
     assert cfg.stem_separate is False
     assert cfg.min_note_ms == 58
+    assert cfg.sf2_bank == 0
+    assert cfg.sf2_preset == 0
+    assert cfg.forced_bank == 0
     assert cfg.chiptune_engine == ENGINE_NES
     assert cfg.chiptune_voice_volumes == (1.0, 1.0, 1.0, 1.0)
     assert cfg.chiptune_voice_mutes == (False, False, False, False)

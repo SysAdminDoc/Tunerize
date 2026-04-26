@@ -99,7 +99,7 @@ QProgressBar::chunk {
     border-radius: 3px;
 }
 
-QTableView, QTextEdit {
+QTableView, QTextEdit, QTextBrowser {
     background: #181825; color: #cdd6f4;
     border: 1px solid #313244; border-radius: 6px;
     gridline-color: #313244; selection-background-color: #45475a;

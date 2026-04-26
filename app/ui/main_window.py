@@ -1,10 +1,16 @@
 """Tunerize main window — single-window converter UI."""
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal, Slot
+from PySide6.QtCore import Qt, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
+
+try:
+    from PySide6.QtMultimedia import QSoundEffect
+except ImportError:  # pragma: no cover - depends on the local PySide6 build
+    QSoundEffect = None
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -34,7 +40,8 @@ from app.core.audio_io import SUPPORTED_INPUT_EXTS
 from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES
 from app.core.pipeline import ConversionPipeline, PipelineConfig
 from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
-from app.core.soundfonts import SoundFontLibrary
+from app.core.renderer import render_preview
+from app.core.soundfonts import SoundFontInfo, SoundFontLibrary
 from app.ui.browser_dialog import BrowserDialog
 
 
@@ -62,6 +69,36 @@ class _Worker(QThread):
             )
             midi_out, wav_out = pipeline.run()
             self.finished_ok.emit(midi_out, wav_out)
+        except Exception as exc:
+            self.finished_err.emit(str(exc))
+
+
+class _PreviewWorker(QThread):
+    finished_ok = Signal(object)
+    finished_err = Signal(str)
+
+    def __init__(self, sf2_path: Path, output_path: Path, bank: int, preset: int):
+        super().__init__()
+        self._sf2_path = sf2_path
+        self._output_path = output_path
+        self._bank = bank
+        self._preset = preset
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def run(self) -> None:
+        try:
+            path = render_preview(
+                self._sf2_path,
+                self._output_path,
+                bank=self._bank,
+                preset=self._preset,
+                duration_seconds=5.0,
+                cancel_check=lambda: self._cancelled,
+            )
+            self.finished_ok.emit(path)
         except Exception as exc:
             self.finished_err.emit(str(exc))
 
@@ -102,8 +139,14 @@ class MainWindow(QMainWindow):
         self.library = SoundFontLibrary(soundfonts_dir or Path.cwd() / "soundfonts")
         self._settings_path = settings_path
         self._worker: _Worker | None = None
+        self._preview_worker: _PreviewWorker | None = None
+        self._preview_player = QSoundEffect(self) if QSoundEffect is not None else None
+        if self._preview_player is not None:
+            self._preview_player.setVolume(0.7)
         self._busy = False
         self._has_soundfonts = False
+        self._soundfont_infos: dict[str, SoundFontInfo] = {}
+        self._soundfont_preset_widgets: list[QWidget] = []
         self.voice_name_labels: list[QLabel] = []
         self.voice_volume_sliders: list[QSlider] = []
         self.voice_value_labels: list[QLabel] = []
@@ -197,6 +240,7 @@ class MainWindow(QMainWindow):
 
         self.sf_combo = QComboBox()
         self.sf_combo.setAccessibleName("SoundFont library")
+        self.sf_combo.currentIndexChanged.connect(lambda _idx: self._on_soundfont_changed())
         self.sf_refresh_btn = QPushButton("↻")
         self.sf_refresh_btn.setToolTip("Re-scan soundfonts/ folder")
         self.sf_refresh_btn.setFixedWidth(36)
@@ -250,13 +294,26 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.quantize_check, 1, 0)
         layout.addWidget(self.quantize_combo, 1, 1)
 
-        self.force_preset_check = QCheckBox("Force all notes to preset (SF2 mode)")
-        self.preset_spin = QSpinBox()
-        self.preset_spin.setRange(0, 127)
-        self.preset_spin.setEnabled(False)
+        self.force_preset_check = QCheckBox("Force all notes to selected preset (SF2 mode)")
+        self.preset_combo = QComboBox()
+        self.preset_combo.setAccessibleName("SoundFont preset")
+        self.preset_combo.setToolTip("Preset list parsed from the selected SoundFont.")
+        self.preview_preset_btn = QPushButton("Preview")
+        self.preview_preset_btn.setToolTip("Render and play a five-second preview of the selected preset.")
+        self.preview_preset_btn.clicked.connect(self._preview_selected_preset)
         self.force_preset_check.toggled.connect(lambda _checked: self._sync_control_state())
+        self._soundfont_preset_widgets.extend([
+            self.force_preset_check,
+            self.preset_combo,
+            self.preview_preset_btn,
+        ])
+
+        preset_row = QHBoxLayout()
+        preset_row.setContentsMargins(0, 0, 0, 0)
+        preset_row.addWidget(self.preset_combo, 1)
+        preset_row.addWidget(self.preview_preset_btn)
         layout.addWidget(self.force_preset_check, 2, 0)
-        layout.addWidget(self.preset_spin, 2, 1)
+        layout.addLayout(preset_row, 2, 1)
 
         self.export_midi_check = QCheckBox("Also export intermediate .mid file")
         self.export_midi_check.setChecked(True)
@@ -331,6 +388,7 @@ class MainWindow(QMainWindow):
             self._chiptune_mixer_widgets.extend([name_label, volume, value_label, mute, solo])
 
         layout.addWidget(mixer_widget, 7, 0, 1, 2)
+        self._chiptune_mixer_widgets.append(mixer_widget)
         self._update_chiptune_engine_labels()
 
         adv.setContentLayout(layout)
@@ -430,20 +488,21 @@ class MainWindow(QMainWindow):
         current = str(select_path) if select_path is not None else (str(current_data) if current_data else "")
         self.sf_combo.clear()
         sounds = self.library.scan()
+        self._soundfont_infos = {normalize_path_key(sf.path): sf for sf in sounds}
         self._has_soundfonts = bool(sounds)
         if not sounds:
             self.sf_combo.addItem(
                 "(no soundfonts found — drop .sf2 files into ./soundfonts/)", None
             )
+            self._refresh_preset_combo()
             self._sync_control_state()
             return
 
-        by_key = {normalize_path_key(sf.path): sf for sf in sounds}
         recent_infos = []
         seen_recent: set[str] = set()
         for recent_path in load_recent_soundfonts(self._settings_path):
             key = normalize_path_key(recent_path)
-            info = by_key.get(key)
+            info = self._soundfont_infos.get(key)
             if info is None or key in seen_recent:
                 continue
             seen_recent.add(key)
@@ -452,6 +511,8 @@ class MainWindow(QMainWindow):
         def add_soundfont(info, *, recent: bool = False) -> None:
             prefix = "Recent: " if recent else ""
             label = f"{prefix}{info.name} ({info.size_mb:.1f} MB)"
+            if info.preset_count:
+                label += f" - {info.preset_count} presets"
             if not info.is_valid:
                 label += "  — INVALID"
             self.sf_combo.addItem(label, str(info.path))
@@ -475,7 +536,104 @@ class MainWindow(QMainWindow):
                     self.sf_combo.setCurrentIndex(i)
                     break
 
+        self._refresh_preset_combo()
         self._sync_control_state()
+
+    def _on_soundfont_changed(self) -> None:
+        if hasattr(self, "preset_combo"):
+            self._refresh_preset_combo()
+            self._sync_control_state()
+
+    def _refresh_preset_combo(self) -> None:
+        if not hasattr(self, "preset_combo"):
+            return
+        previous = self.preset_combo.currentData()
+        self.preset_combo.clear()
+
+        sf_data = self.sf_combo.currentData()
+        if not sf_data:
+            self.preset_combo.addItem("No SoundFont selected", None)
+            return
+
+        info = self._soundfont_infos.get(normalize_path_key(Path(sf_data)))
+        if info is None:
+            self.preset_combo.addItem("Preset 0:0 - default", (0, 0))
+            return
+
+        if not info.is_valid:
+            self.preset_combo.addItem("Preset list unavailable", None)
+            return
+
+        if not info.presets:
+            self.preset_combo.addItem("Preset 0:0 - default", (0, 0))
+            return
+
+        for preset in info.presets:
+            self.preset_combo.addItem(preset.label, (preset.bank, preset.preset))
+
+        preferred_idx = self._find_preset_data(previous)
+        if preferred_idx < 0:
+            preferred_idx = self._find_preset_data((0, 0))
+        self.preset_combo.setCurrentIndex(max(preferred_idx, 0))
+
+    def _selected_soundfont_preset(self) -> tuple[int, int]:
+        data = self.preset_combo.currentData()
+        if isinstance(data, tuple) and len(data) == 2:
+            return int(data[0]), int(data[1])
+        return 0, 0
+
+    def _find_preset_data(self, target) -> int:
+        for idx in range(self.preset_combo.count()):
+            if self.preset_combo.itemData(idx) == target:
+                return idx
+        return -1
+
+    def _preview_selected_preset(self) -> None:
+        if self._preview_worker is not None and self._preview_worker.isRunning():
+            return
+        sf_data = self.sf_combo.currentData()
+        if not sf_data:
+            QMessageBox.warning(self, "Missing SoundFont", "Pick a SoundFont before previewing a preset.")
+            return
+
+        bank, preset = self._selected_soundfont_preset()
+        preview_dir = Path(tempfile.gettempdir()) / "tunerize-previews"
+        preview_path = preview_dir / "preset-preview.wav"
+        if self._preview_player is not None:
+            self._preview_player.stop()
+        self.preview_preset_btn.setText("Rendering...")
+        self.preview_preset_btn.setEnabled(False)
+        self.stage_label.setText("Rendering preset preview...")
+
+        self._preview_worker = _PreviewWorker(Path(sf_data), preview_path, bank, preset)
+        self._preview_worker.finished_ok.connect(self._on_preview_done)
+        self._preview_worker.finished_err.connect(self._on_preview_failed)
+        self._preview_worker.start()
+
+    @Slot(object)
+    def _on_preview_done(self, path) -> None:
+        self.preview_preset_btn.setText("Preview")
+        self._sync_control_state()
+        self.stage_label.setText("Preset preview ready.")
+        self._log(f"Preview rendered: {Path(path).name}")
+        if self._preview_player is None:
+            QMessageBox.information(
+                self,
+                "Preview rendered",
+                "The preset preview was rendered, but this PySide6 build cannot play it.",
+            )
+            return
+        self._preview_player.stop()
+        self._preview_player.setSource(QUrl.fromLocalFile(str(path)))
+        self._preview_player.play()
+
+    @Slot(str)
+    def _on_preview_failed(self, err_msg: str) -> None:
+        self.preview_preset_btn.setText("Preview")
+        self._sync_control_state()
+        self.stage_label.setText("Preset preview failed.")
+        self._log(f"Preview failed: {err_msg}")
+        QMessageBox.warning(self, "Preview failed", err_msg)
 
     def _update_mode_visibility(self) -> None:
         chiptune = self.mode_chiptune.isChecked()
@@ -517,21 +675,30 @@ class MainWindow(QMainWindow):
             self.sf_browse_btn,
             self.transpose_spin,
             self.quantize_check,
-            self.force_preset_check,
             self.export_midi_check,
             self.min_note_spin,
         ):
             widget.setEnabled(enabled)
 
+        sf2_mode = self.mode_sf2.isChecked()
+        for widget in self._soundfont_preset_widgets:
+            widget.setVisible(sf2_mode)
         self.sf_combo.setEnabled(enabled and self._has_soundfonts)
         self.quantize_combo.setEnabled(enabled and self.quantize_check.isChecked())
-        self.preset_spin.setEnabled(enabled and self.force_preset_check.isChecked())
-        self.convert_btn.setEnabled(enabled)
+        self.force_preset_check.setEnabled(enabled and sf2_mode and self._has_soundfonts)
+        preset_available = self.preset_combo.currentData() is not None
+        self.preset_combo.setEnabled(enabled and sf2_mode and self._has_soundfonts and preset_available)
+        preview_running = self._preview_worker is not None and self._preview_worker.isRunning()
+        self.preview_preset_btn.setEnabled(
+            enabled and sf2_mode and self._has_soundfonts and preset_available and not preview_running
+        )
+        self.convert_btn.setEnabled(enabled and not preview_running)
         self.cancel_btn.setEnabled(self._busy)
         self.setAcceptDrops(enabled)
 
         mixer_enabled = enabled and self.mode_chiptune.isChecked()
         for widget in self._chiptune_mixer_widgets:
+            widget.setVisible(self.mode_chiptune.isChecked())
             widget.setEnabled(mixer_enabled)
 
     def _audio_path_from_drop(self, event: QDragEnterEvent | QDragMoveEvent | QDropEvent) -> Path | None:
@@ -597,6 +764,7 @@ class MainWindow(QMainWindow):
         out_dir_text = self.out_edit.text().strip()
         out_dir = Path(out_dir_text) if out_dir_text else Path(audio).parent
         voice_volumes, voice_mutes, voice_solos = self._chiptune_voice_settings()
+        sf2_bank, sf2_preset = self._selected_soundfont_preset()
 
         try:
             config = PipelineConfig(
@@ -607,8 +775,11 @@ class MainWindow(QMainWindow):
                 transpose=self.transpose_spin.value(),
                 quantize=self.quantize_check.isChecked(),
                 quantize_grid=self.quantize_combo.currentText(),
+                sf2_bank=sf2_bank,
+                sf2_preset=sf2_preset,
                 force_preset=self.force_preset_check.isChecked(),
-                forced_preset=self.preset_spin.value(),
+                forced_bank=sf2_bank,
+                forced_preset=sf2_preset,
                 min_note_ms=self.min_note_spin.value(),
                 stem_separate=self.demucs_check.isChecked(),
                 export_midi=self.export_midi_check.isChecked(),
