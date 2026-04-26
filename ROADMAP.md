@@ -36,7 +36,7 @@
   - Completed 2026-04-25: Chiptune mode now offers a Game Boy DMG engine with two pulse channels, a 4-bit wave channel, noise, and the same mixer controls.
 - [x] **SNES SPC700-style engine** — 8-voice with sample playback
   - Completed 2026-05-09: Multi-harmonic BRR waveforms (lead/harmony/bass), SNES-tuned ADSR envelopes, 4-tap Gaussian FIR warmth filter, vectorized multi-tap echo (delay/feedback/mix). 8-slot internal voice allocator merged into 4 mixer groups. Engine label "SNES SPC700" in the dropdown.
-- [ ] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis
+- [x] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis
   - Completed 2026-05-09: 2-operator FM waveforms (feedback lead, 2:1 harmony, sub-modulator bass), YM2612-tuned ADSR envelopes, soft-saturation DAC clip model, 6-slot internal allocator (3 lead/2 harmony/1 bass) merged into 4 mixer groups. Engine label "Sega Genesis FM" in dropdown; voice labels update to FM Ch1-3/CH4-5/CH6/Rhythm.
 - [x] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)
   - Completed 2026-04-25: Advanced settings now control pulse 1, pulse 2, triangle, and noise voice volume/mute/solo before rendering.
@@ -48,8 +48,10 @@
 ## v0.4.0 — SoundFont editor (bundled)
 - [ ] **Bundle Polyphone in installer** (GPL, ~25MB) — full SF2 editor, no external download
 - [ ] *Edit SoundFont…* button — launches bundled Polyphone with current SF2 loaded
-- [ ] SoundFont metadata viewer (presets, banks, sample count) inside Tunerize
-- [ ] Preset preview pane (play 5-sec arpeggio of selected preset)
+- [x] SoundFont metadata viewer (presets, banks, sample count) inside Tunerize
+  - Completed 2026-04-25: `SoundFontInfo` now carries `sample_count` (from `shdr` chunk) and computed `bank_count`. A compact `sfMeta` label below the SF selector shows "N presets · N banks · N,NNN samples · X MB" on SF selection; hidden in chiptune mode. Single-pass `pdta` traversal reads both `phdr` and `shdr` in one file open.
+- [x] Preset preview pane (play 5-sec arpeggio of selected preset)
+  - Completed 2026-04-25: SoundFont mode parses `phdr` preset headers and renders a five-second FluidSynth audition phrase for the selected preset.
 
 ## v0.5.0 — Native SF2 creation
 - [ ] Sample import (WAV → SF2 sample) — no external editor needed

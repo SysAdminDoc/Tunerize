@@ -2,7 +2,18 @@
 
 All notable changes to Tunerize are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [Semantic Versioning](https://semver.org/).
 
-## v0.3.0 — 2026-05-09
+## v0.4.0 — 2026-05-09
+
+SoundFont metadata viewer with live preset/bank/sample stats.
+
+### Added
+- **SoundFont metadata label** — compact status line below the SoundFont selector showing preset count, bank count, sample count, and file size (e.g., "128 presets · 3 banks · 1,024 samples · 8.2 MB"). Reads the `shdr` chunk from the SF2 binary so sample count is always accurate. Hidden automatically when switching to chiptune mode.
+
+### Changed
+- `SoundFontInfo` now carries `sample_count` (parsed from the `shdr` chunk) and a computed `bank_count` property.
+- SF2 parser refactored to traverse the `pdta` LIST sub-chunks in a single file-open pass, reading both `phdr` and `shdr` together instead of two separate reads.
+
+
 
 More retro engines, smarter SoundFont onboarding, and a deeper chiptune voice model.
 

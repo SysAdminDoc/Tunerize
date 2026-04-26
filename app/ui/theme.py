@@ -10,6 +10,7 @@ QLabel { background: transparent; color: #cdd6f4; }
 QLabel#title { font-size: 22pt; font-weight: 700; color: #cba6f7; }
 QLabel#subtitle { font-size: 10pt; color: #a6adc8; padding-bottom: 8px; }
 QLabel#stage { font-size: 10pt; color: #89b4fa; padding-top: 6px; }
+QLabel#sfMeta { font-size: 9pt; color: #6c7086; padding: 0 4px 4px; }
 QLabel#logLabel {
     font-size: 9pt; color: #6c7086; padding-top: 8px;
     text-transform: uppercase; letter-spacing: 1px;

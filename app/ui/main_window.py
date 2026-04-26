@@ -176,6 +176,9 @@ class MainWindow(QMainWindow):
         root.addWidget(self._mode_section())
         root.addLayout(self._input_row())
         root.addWidget(self._soundfont_frame())
+        self.sf_meta_label = QLabel()
+        self.sf_meta_label.setObjectName("sfMeta")
+        root.addWidget(self.sf_meta_label)
         root.addLayout(self._output_row())
 
         self.demucs_check = QCheckBox(
@@ -509,6 +512,7 @@ class MainWindow(QMainWindow):
             )
             self._refresh_preset_combo()
             self._sync_control_state()
+            self._update_sf_meta_label()
             return
 
         recent_infos = []
@@ -551,11 +555,34 @@ class MainWindow(QMainWindow):
 
         self._refresh_preset_combo()
         self._sync_control_state()
+        self._update_sf_meta_label()
 
     def _on_soundfont_changed(self) -> None:
         if hasattr(self, "preset_combo"):
             self._refresh_preset_combo()
             self._sync_control_state()
+        self._update_sf_meta_label()
+
+    def _update_sf_meta_label(self) -> None:
+        if not hasattr(self, "sf_meta_label"):
+            return
+        sf_data = self.sf_combo.currentData()
+        if not sf_data:
+            self.sf_meta_label.setText("")
+            return
+        info = self._soundfont_infos.get(normalize_path_key(Path(sf_data)))
+        if info is None or not info.is_valid:
+            self.sf_meta_label.setText("")
+            return
+        parts: list[str] = []
+        if info.preset_count:
+            parts.append(f"{info.preset_count} presets")
+        if info.bank_count > 1:
+            parts.append(f"{info.bank_count} banks")
+        if info.sample_count:
+            parts.append(f"{info.sample_count:,} samples")
+        parts.append(f"{info.size_mb:.1f}\u202fMB")
+        self.sf_meta_label.setText(" \u00b7 ".join(parts))
 
     def _refresh_preset_combo(self) -> None:
         if not hasattr(self, "preset_combo"):
@@ -651,6 +678,8 @@ class MainWindow(QMainWindow):
     def _update_mode_visibility(self) -> None:
         chiptune = self.mode_chiptune.isChecked()
         self.sf_frame.setVisible(not chiptune)
+        if hasattr(self, "sf_meta_label"):
+            self.sf_meta_label.setVisible(not chiptune)
         self._sync_control_state()
 
     def _log(self, msg: str) -> None:

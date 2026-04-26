@@ -10,6 +10,7 @@ SF2_RIFF_MAGIC = b"RIFF"
 SF2_FORM_MAGIC = b"sfbk"
 SF2_EXTS = (".sf2", ".sf3")
 PHDR_RECORD_SIZE = 38
+SHDR_RECORD_SIZE = 46  # SF2 spec §7.10: each shdr record is exactly 46 bytes
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,7 @@ class SoundFontInfo:
     is_valid: bool
     error: str | None = None
     presets: tuple[SoundFontPreset, ...] = ()
+    sample_count: int = 0
 
     @property
     def stem(self) -> str:
@@ -39,6 +41,10 @@ class SoundFontInfo:
     @property
     def preset_count(self) -> int:
         return len(self.presets)
+
+    @property
+    def bank_count(self) -> int:
+        return len({p.bank for p in self.presets})
 
 
 def validate_sf2(path: Path) -> tuple[bool, str | None]:
@@ -70,7 +76,10 @@ def get_info(path: Path) -> SoundFontInfo:
 
     size_mb = path.stat().st_size / (1024 * 1024)
     is_valid, err = validate_sf2(path)
-    presets = read_presets(path) if is_valid else ()
+    presets: tuple[SoundFontPreset, ...] = ()
+    sample_count = 0
+    if is_valid:
+        presets, sample_count = _read_pdta_section(path)
     return SoundFontInfo(
         path=path,
         name=path.stem,
@@ -78,19 +87,30 @@ def get_info(path: Path) -> SoundFontInfo:
         is_valid=is_valid,
         error=err,
         presets=presets,
+        sample_count=sample_count,
     )
 
 
 def read_presets(path: Path) -> tuple[SoundFontPreset, ...]:
     """Read bank/preset headers from a SoundFont's `pdta/phdr` chunk."""
+    presets, _sample_count = _read_pdta_section(path)
+    return presets
+
+
+def _read_pdta_section(path: Path) -> tuple[tuple[SoundFontPreset, ...], int]:
+    """Single-pass parse of the pdta LIST chunk; returns (presets, sample_count).
+
+    Traverses the pdta sub-chunks once, extracting the phdr preset records and
+    counting shdr sample records, so the file is only read once per call.
+    """
     try:
         with open(path, "rb") as f:
             header = f.read(12)
             if len(header) < 12:
-                return ()
+                return (), 0
             riff, riff_size, form = struct.unpack("<4sI4s", header)
             if riff != SF2_RIFF_MAGIC or form != SF2_FORM_MAGIC:
-                return ()
+                return (), 0
 
             riff_end = min(path.stat().st_size, riff_size + 8)
             while f.tell() + 8 <= riff_end:
@@ -100,23 +120,31 @@ def read_presets(path: Path) -> tuple[SoundFontPreset, ...]:
                 if chunk_id == b"LIST" and chunk_size >= 4:
                     list_type = f.read(4)
                     if list_type == b"pdta":
-                        return _read_pdta_presets(f, chunk_end)
+                        return _parse_pdta_chunks(f, chunk_end)
                 f.seek(chunk_end + (chunk_size % 2))
     except (OSError, struct.error):
-        return ()
-    return ()
+        return (), 0
+    return (), 0
 
 
-def _read_pdta_presets(f, pdta_end: int) -> tuple[SoundFontPreset, ...]:
+def _parse_pdta_chunks(f, pdta_end: int) -> tuple[tuple[SoundFontPreset, ...], int]:
+    """Traverse pdta sub-chunks, returning (presets, sample_count)."""
+    presets: tuple[SoundFontPreset, ...] = ()
+    sample_count = 0
     while f.tell() + 8 <= pdta_end:
         chunk_id, chunk_size = _read_chunk_header(f)
         chunk_start = f.tell()
         chunk_end = min(chunk_start + chunk_size, pdta_end)
         if chunk_id == b"phdr":
             data = f.read(chunk_end - chunk_start)
-            return _parse_phdr(data)
+            presets = _parse_phdr(data)
+        elif chunk_id == b"shdr" and chunk_size >= SHDR_RECORD_SIZE:
+            # shdr record is 46 bytes; last record is the EOS sentinel
+            sample_count = max(0, chunk_size // SHDR_RECORD_SIZE - 1)
+            f.seek(chunk_end + (chunk_size % 2))
+            continue
         f.seek(chunk_end + (chunk_size % 2))
-    return ()
+    return presets, sample_count
 
 
 def _read_chunk_header(f) -> tuple[bytes, int]:

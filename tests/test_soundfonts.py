@@ -6,7 +6,13 @@ from pathlib import Path
 
 import pytest
 
-from app.core.soundfonts import SoundFontLibrary, get_info, read_presets, validate_sf2
+from app.core.soundfonts import (
+    SHDR_RECORD_SIZE,
+    SoundFontLibrary,
+    get_info,
+    read_presets,
+    validate_sf2,
+)
 
 
 def test_validate_sf2_accepts_valid_header(fake_sf2):
@@ -91,7 +97,30 @@ def test_get_info_reports_preset_count(tmp_path):
     assert info.preset_count == 3
 
 
-def _write_sf2_with_presets(path: Path) -> Path:
+def test_get_info_reports_sample_count(tmp_path):
+    sf2 = _write_sf2_with_presets(tmp_path / "samples.sf2", sample_count=12)
+
+    info = get_info(sf2)
+
+    assert info.sample_count == 12
+
+
+def test_soundfont_info_bank_count(tmp_path):
+    sf2 = _write_sf2_with_presets(tmp_path / "banks.sf2")
+
+    info = get_info(sf2)
+
+    # Presets: bank 0 (Piano), bank 1 (Warm Pad), bank 128 (Drum Kit) → 3 banks
+    assert info.bank_count == 3
+
+
+def test_soundfont_info_bank_count_single(fake_sf2):
+    # fake_sf2 has no phdr, so no presets → bank_count = 0
+    info = get_info(fake_sf2)
+    assert info.bank_count == 0
+
+
+def _write_sf2_with_presets(path: Path, *, sample_count: int = 0) -> Path:
     records = b"".join(
         [
             _phdr_record("Warm Pad", preset=5, bank=1, bag_index=1),
@@ -101,7 +130,12 @@ def _write_sf2_with_presets(path: Path) -> Path:
         ]
     )
     phdr = b"phdr" + struct.pack("<I", len(records)) + records
-    pdta_payload = b"pdta" + phdr
+
+    # Build shdr chunk: sample_count real records + 1 EOS sentinel
+    shdr_records = b"\x00" * SHDR_RECORD_SIZE * (sample_count + 1)
+    shdr = b"shdr" + struct.pack("<I", len(shdr_records)) + shdr_records
+
+    pdta_payload = b"pdta" + phdr + shdr
     list_chunk = b"LIST" + struct.pack("<I", len(pdta_payload)) + pdta_payload
     riff_payload = b"sfbk" + list_chunk
     path.write_bytes(b"RIFF" + struct.pack("<I", len(riff_payload)) + riff_payload)
