@@ -142,7 +142,7 @@ class BrowserDialog(QDialog):
 
     sf_installed = Signal(object)  # Path
 
-    def __init__(self, library_dir: Path, parent=None):
+    def __init__(self, library_dir: Path, *, initial_query: str = "", parent=None):
         super().__init__(parent)
         self.setWindowTitle("Browse Online SoundFonts")
         self.resize(960, 660)
@@ -156,9 +156,12 @@ class BrowserDialog(QDialog):
             "reddit r/soundfonts": RedditSoundFontsProvider(cache_dir=cache_dir),
         }
         self._provider = self._providers["musical-artifacts.com"]
+        self._initial_query = initial_query
 
         self._build_ui()
-        self._do_search("")
+        if initial_query:
+            self.search_edit.setText(initial_query)
+        self._do_search(initial_query)
 
     # ---------- UI ----------
 

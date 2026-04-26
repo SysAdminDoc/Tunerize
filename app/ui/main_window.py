@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from app import __version__
 from app.core.audio_io import SUPPORTED_INPUT_EXTS
-from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES
+from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SNES
 from app.core.pipeline import ConversionPipeline, PipelineConfig
 from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
 from app.core.renderer import render_preview
@@ -248,6 +248,11 @@ class MainWindow(QMainWindow):
         self.sf_add_btn = QPushButton("Add…")
         self.sf_add_btn.setToolTip("Import a .sf2 file from disk into your library")
         self.sf_add_btn.clicked.connect(self._add_soundfont)
+        self.sf_fluids_btn = QPushButton("Get FluidR3 GM…")
+        self.sf_fluids_btn.setToolTip(
+            "Search for the free FluidR3 GM SoundFont in the online browser"
+        )
+        self.sf_fluids_btn.clicked.connect(self._open_fluids_browser)
         self.sf_browse_btn = QPushButton("Browse Online…")
         self.sf_browse_btn.setToolTip("Search and install SoundFonts from public libraries")
         self.sf_browse_btn.clicked.connect(self._open_browser)
@@ -256,6 +261,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.sf_combo, 1)
         layout.addWidget(self.sf_refresh_btn)
         layout.addWidget(self.sf_add_btn)
+        layout.addWidget(self.sf_fluids_btn)
         layout.addWidget(self.sf_browse_btn)
         return self.sf_frame
 
@@ -330,6 +336,7 @@ class MainWindow(QMainWindow):
         self.engine_combo = QComboBox()
         self.engine_combo.addItem("NES APU-style", ENGINE_NES)
         self.engine_combo.addItem("Game Boy DMG", ENGINE_GAME_BOY)
+        self.engine_combo.addItem("SNES SPC700", ENGINE_SNES)
         self.engine_combo.setToolTip("Choose the built-in chip model used by Chiptune mode.")
         self.engine_combo.currentIndexChanged.connect(lambda _idx: self._update_chiptune_engine_labels())
         layout.addWidget(engine_label, 5, 0)
@@ -473,6 +480,11 @@ class MainWindow(QMainWindow):
 
     def _open_browser(self) -> None:
         dlg = BrowserDialog(self.library.library_dir, parent=self)
+        dlg.sf_installed.connect(self._on_browser_installed)
+        dlg.exec()
+
+    def _open_fluids_browser(self) -> None:
+        dlg = BrowserDialog(self.library.library_dir, initial_query="FluidR3 GM", parent=self)
         dlg.sf_installed.connect(self._on_browser_installed)
         dlg.exec()
 
@@ -695,6 +707,8 @@ class MainWindow(QMainWindow):
         self.convert_btn.setEnabled(enabled and not preview_running)
         self.cancel_btn.setEnabled(self._busy)
         self.setAcceptDrops(enabled)
+        # Show the FluidR3 quick-download button only when no soundfonts are present
+        self.sf_fluids_btn.setVisible(not self._has_soundfonts)
 
         mixer_enabled = enabled and self.mode_chiptune.isChecked()
         for widget in self._chiptune_mixer_widgets:
@@ -870,8 +884,11 @@ class MainWindow(QMainWindow):
         return self.engine_combo.currentData() or ENGINE_NES
 
     def _update_chiptune_engine_labels(self) -> None:
-        if self._selected_chiptune_engine() == ENGINE_GAME_BOY:
+        engine = self._selected_chiptune_engine()
+        if engine == ENGINE_GAME_BOY:
             names = ("Pulse 1 lead", "Pulse 2 harmony", "Wave channel", "Noise drums")
+        elif engine == ENGINE_SNES:
+            names = ("Lead (V1-2)", "Harmony (V3-4)", "Bass (V5-6)", "Noise (V7-8)")
         else:
             names = ("Pulse 1 lead", "Pulse 2 harmony", "Triangle bass", "Noise drums")
         for label, name in zip(self.voice_name_labels, names, strict=True):

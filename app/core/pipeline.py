@@ -192,4 +192,8 @@ class ConversionPipeline:
 
 
 def _chiptune_suffix(engine: str) -> str:
-    return "gameboy" if engine == chiptune.ENGINE_GAME_BOY else "chiptune"
+    if engine == chiptune.ENGINE_GAME_BOY:
+        return "gameboy"
+    if engine == chiptune.ENGINE_SNES:
+        return "snes"
+    return "chiptune"

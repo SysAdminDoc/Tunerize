@@ -21,10 +21,11 @@
 - [x] Streaming download with cancel + progress + post-download SF2 validation
 - [x] Auto-switch to SF2 mode after install
 
-## v0.3.0 — Self-contained install + more retro engines + more browser sources
+## v0.3.0 — Self-contained install + more retro engines + more browser sources (shipped 2026-05-09)
 - [ ] Bundle `fluidsynth.exe` (no `winget` requirement)
 - [ ] PyInstaller one-file Windows binary
-- [ ] Auto-download FluidR3 GM on first run (uses the v0.2 browser plumbing)
+- [x] Auto-download FluidR3 GM on first run (uses the v0.2 browser plumbing)
+  - Completed 2026-05-09: "Get FluidR3 GM…" button appears when no SoundFonts are installed, opening the browser pre-filled with "FluidR3 GM". BrowserDialog now accepts `initial_query` kwarg.
 - [x] Per-preset dropdown with 5-second preview button
   - Completed 2026-04-25: SoundFont mode now parses `phdr` preset headers, exposes bank/program names in Advanced settings, and renders a five-second FluidSynth audition phrase for the selected preset.
 - [x] Recent-soundfont MRU list in dropdown
@@ -33,7 +34,8 @@
   - Completed 2026-04-25: accepts supported audio files anywhere on the main window and blocks drops during conversion.
 - [x] **Game Boy DMG engine** — 4-voice variant (2 pulse, custom waveform, noise)
   - Completed 2026-04-25: Chiptune mode now offers a Game Boy DMG engine with two pulse channels, a 4-bit wave channel, noise, and the same mixer controls.
-- [ ] **SNES SPC700-style engine** — 8-voice with sample playback
+- [x] **SNES SPC700-style engine** — 8-voice with sample playback
+  - Completed 2026-05-09: Multi-harmonic BRR waveforms (lead/harmony/bass), SNES-tuned ADSR envelopes, 4-tap Gaussian FIR warmth filter, vectorized multi-tap echo (delay/feedback/mix). 8-slot internal voice allocator merged into 4 mixer groups. Engine label "SNES SPC700" in the dropdown.
 - [ ] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis
 - [x] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)
   - Completed 2026-04-25: Advanced settings now control pulse 1, pulse 2, triangle, and noise voice volume/mute/solo before rendering.

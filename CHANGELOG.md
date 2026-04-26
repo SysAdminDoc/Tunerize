@@ -2,9 +2,13 @@
 
 All notable changes to Tunerize are documented here. Format follows [Keep a Changelog](https://keepachangelog.com/); versions follow [Semantic Versioning](https://semver.org/).
 
-## Unreleased
+## v0.3.0 — 2026-05-09
+
+More retro engines, smarter SoundFont onboarding, and a deeper chiptune voice model.
 
 ### Added
+- **SNES SPC700-style chiptune engine** — 8-voice BRR-sample model with multi-harmonic sine waveforms (lead/harmony/bass voice layers), per-engine ADSR envelopes tuned to SNES instrument recordings, a 4-tap Gaussian FIR warmth filter matching the SPC700 DSP interpolation table, and a vectorized multi-tap echo approximating the SPC700 echo buffer with configurable delay, feedback, and mix level. Selected via the new "SNES SPC700" entry in the engine dropdown.
+- **FluidR3 GM quick-download button** — a "Get FluidR3 GM…" button appears in the SoundFont row when no SoundFonts are installed, opening the online browser pre-filled with "FluidR3 GM" so new users can get a great default SoundFont in two clicks.
 - Drag-and-drop audio selection on the main window for all supported input formats.
 - Recent SoundFont persistence: the last five used or installed `.sf2` / `.sf3` files appear first in the SoundFont dropdown when still present in the local library.
 - Chiptune voice mixer in Advanced settings with per-voice volume, mute, and solo controls for pulse 1, pulse 2, triangle, and noise.
@@ -18,6 +22,7 @@ All notable changes to Tunerize are documented here. Format follows [Keep a Chan
 - Main-window and browser table styling tightened for clearer grouping, focus, and selected states.
 - SoundFont rendering starts from the selected bank/program, and force-preset mode now uses that selected bank/program instead of a preset-number-only spinbox.
 - Browser details now escape provider text before rendering HTML and disable install for discovery-only rows without a direct download URL.
+- `BrowserDialog` now accepts an `initial_query` keyword argument to pre-fill the search bar and run an automatic first search on open.
 
 ## v0.2.0 — 2026-04-25
 

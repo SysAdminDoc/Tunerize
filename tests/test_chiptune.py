@@ -6,7 +6,17 @@ import pretty_midi
 import pytest
 import soundfile as sf
 
-from app.core.chiptune import ENGINE_GAME_BOY, ChiptuneError, _assign_voices, _voice_mixer_gains, render
+from app.core.chiptune import (
+    ENGINE_GAME_BOY,
+    ENGINE_SNES,
+    ChiptuneError,
+    _apply_snes_echo,
+    _apply_snes_gaussian,
+    _assign_voices,
+    _assign_voices_snes,
+    _voice_mixer_gains,
+    render,
+)
 
 
 def test_render_produces_nonsilent_wav(tmp_path, synthetic_midi):
@@ -117,3 +127,89 @@ def test_render_voice_mute_changes_mix(tmp_path, synthetic_midi):
     default_audio, _ = sf.read(str(default_out))
     muted_audio, _ = sf.read(str(muted_out))
     assert not np.allclose(default_audio, muted_audio)
+
+
+# ---------- SNES SPC700 engine tests ----------
+
+def test_render_snes_engine_produces_nonsilent_wav(tmp_path, synthetic_midi):
+    out = tmp_path / "snes.wav"
+    render(synthetic_midi, out, engine=ENGINE_SNES)
+
+    audio, sr = sf.read(str(out))
+    assert sr == 44100
+    assert audio.shape[1] == 2
+    assert np.max(np.abs(audio)) > 0.01
+
+
+def test_render_snes_differs_from_nes(tmp_path, synthetic_midi):
+    nes_out = tmp_path / "nes.wav"
+    snes_out = tmp_path / "snes.wav"
+    render(synthetic_midi, nes_out)
+    render(synthetic_midi, snes_out, engine=ENGINE_SNES)
+
+    nes_audio, _ = sf.read(str(nes_out))
+    snes_audio, _ = sf.read(str(snes_out))
+    assert not np.allclose(nes_audio, snes_audio)
+
+
+def test_assign_voices_snes_distributes_notes():
+    midi = pretty_midi.PrettyMIDI(initial_tempo=120.0)
+    inst = pretty_midi.Instrument(program=0, is_drum=False)
+    # low bass, mid harmony, high lead — all at separated times
+    inst.notes.append(pretty_midi.Note(velocity=80, pitch=36, start=0.0, end=0.4))
+    inst.notes.append(pretty_midi.Note(velocity=80, pitch=60, start=0.5, end=0.9))
+    inst.notes.append(pretty_midi.Note(velocity=80, pitch=84, start=1.0, end=1.4))
+    midi.instruments.append(inst)
+    drum_inst = pretty_midi.Instrument(program=0, is_drum=True)
+    drum_inst.notes.append(pretty_midi.Note(velocity=80, pitch=38, start=0.0, end=0.1))
+    midi.instruments.append(drum_inst)
+
+    lead, harm, bass, noise = _assign_voices_snes(midi)
+
+    assert 84 in [n.pitch for n in lead]
+    assert 60 in [n.pitch for n in harm]
+    assert 36 in [n.pitch for n in bass]
+    assert len(noise) == 1
+
+
+def test_assign_voices_snes_total_notes_preserved():
+    """All melodic notes must appear in exactly one voice group (no duplicates, no drops)."""
+    midi = pretty_midi.PrettyMIDI(initial_tempo=120.0)
+    inst = pretty_midi.Instrument(program=0, is_drum=False)
+    for i, pitch in enumerate([40, 50, 60, 70, 80, 90]):
+        inst.notes.append(pretty_midi.Note(velocity=80, pitch=pitch, start=i * 0.5, end=i * 0.5 + 0.4))
+    midi.instruments.append(inst)
+
+    lead, harm, bass, noise = _assign_voices_snes(midi)
+    all_melodic = lead + harm + bass
+    assert len(all_melodic) == 6
+    assert len(noise) == 0
+
+
+def test_apply_snes_gaussian_preserves_length():
+    signal = np.random.default_rng(0).uniform(-1, 1, 4096).astype(np.float32)
+    filtered = _apply_snes_gaussian(signal)
+    assert filtered.shape == signal.shape
+
+
+def test_apply_snes_gaussian_attenuates_high_freq():
+    """After Gaussian filter, the high-frequency component should be weaker."""
+    sr = 44100
+    t = np.arange(sr, dtype=np.float32) / sr
+    high_freq = np.sin(2 * np.pi * 18000 * t)
+    filtered = _apply_snes_gaussian(high_freq)
+    assert np.max(np.abs(filtered)) < np.max(np.abs(high_freq))
+
+
+def test_apply_snes_echo_produces_longer_signal():
+    """Echo should introduce energy after the original impulse ends."""
+    sr = 44100
+    delay_ms = 100.0
+    pulse = np.zeros(sr, dtype=np.float32)
+    pulse[:100] = 1.0  # short impulse at start
+    echoed = _apply_snes_echo(pulse, sr, delay_ms=delay_ms, feedback=0.3, mix_vol=0.4, taps=2)
+    assert echoed.shape == pulse.shape
+    # Echo tap 1 lands at delay_samples offset; energy should appear there
+    delay_samples = int(delay_ms * sr / 1000)
+    echo_window = echoed[delay_samples: delay_samples + 200]
+    assert np.max(np.abs(echo_window)) > 0.01

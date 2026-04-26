@@ -1,15 +1,15 @@
 # Tunerize
 
-[![Version](https://img.shields.io/badge/version-0.2.0-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
+[![Version](https://img.shields.io/badge/version-0.3.0-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square&logo=windows)](https://www.microsoft.com/windows)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Built with PySide6](https://img.shields.io/badge/UI-PySide6-41CD52?style=flat-square&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
 
-**Re-render any audio as chiptune — or through any SoundFont you choose.** Drop in an MP3 or WAV, pick **Chiptune Mode** (built-in NES-style synth, zero setup) or any `.sf2` (piano, brass, SC-55, anything), and get back a WAV in that style.
+**Re-render any audio as chiptune — or through any SoundFont you choose.** Drop in an MP3 or WAV, pick **Chiptune Mode** (built-in retro synths, zero setup) or any `.sf2` (piano, brass, SC-55, anything), and get back a WAV in that style.
 
 Tunerize does the full pipeline locally: audio → MIDI (via Spotify Basic Pitch) → cleaned MIDI → render. Two render paths:
-- **Chiptune engine** (built-in) — 2 pulse channels + triangle + noise, NES APU-style. No SoundFont needed.
+- **Chiptune engine** (built-in) — three chip models: **NES APU-style** (2 pulse + triangle + noise), **Game Boy DMG** (2 pulse + 4-bit wave + noise), and **SNES SPC700-style** (8 voices with multi-harmonic waveforms, Gaussian warmth filter, and echo). No SoundFont needed.
 - **SoundFont engine** (FluidSynth) — anything `.sf2` you can find.
 
 One window, one button, no cloud.
