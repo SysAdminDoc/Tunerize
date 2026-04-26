@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 from app import __version__
 from app.core.audio_io import SUPPORTED_INPUT_EXTS
 from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
+from app.core.genre_presets import GenrePreset, get_genre_presets
 from app.core.pipeline import ConversionPipeline, PipelineConfig
 from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
 from app.core.renderer import render_preview
@@ -214,6 +215,7 @@ class MainWindow(QMainWindow):
         root.addWidget(title)
         root.addWidget(subtitle)
 
+        root.addLayout(self._style_preset_row())
         root.addWidget(self._mode_section())
         root.addLayout(self._input_row())
         root.addWidget(self._soundfont_frame())
@@ -237,6 +239,66 @@ class MainWindow(QMainWindow):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(content)
         self.setCentralWidget(scroll)
+
+    def _style_preset_row(self) -> QHBoxLayout:
+        self.style_combo = QComboBox()
+        self.style_combo.setMinimumWidth(180)
+        self.style_combo.addItem("Custom (current settings)", None)
+        for preset in get_genre_presets():
+            self.style_combo.addItem(preset.name, preset)
+        self.style_combo.setToolTip("Apply a named style — sets mode, engine, and conversion options in one click.")
+
+        self.style_hint_label = QLabel()
+        self.style_hint_label.setObjectName("styleHint")
+        self.style_hint_label.setWordWrap(True)
+        self.style_hint_label.setVisible(False)
+
+        self.style_combo.activated.connect(self._apply_genre_preset_by_idx)
+
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Style:"))
+        row.addWidget(self.style_combo)
+        row.addWidget(self.style_hint_label, 1)
+        row.addStretch(1)
+        return row
+
+    @Slot(int)
+    def _apply_genre_preset_by_idx(self, idx: int) -> None:
+        preset: GenrePreset | None = self.style_combo.itemData(idx)
+        if preset is None:
+            self.style_hint_label.setVisible(False)
+            return
+        self._apply_genre_preset(preset)
+
+    def _apply_genre_preset(self, preset: GenrePreset) -> None:
+        if preset.chiptune_mode:
+            self.mode_chiptune.setChecked(True)
+            if preset.engine is not None:
+                for i in range(self.engine_combo.count()):
+                    if self.engine_combo.itemData(i) == preset.engine:
+                        self.engine_combo.setCurrentIndex(i)
+                        break
+        else:
+            self.mode_sf2.setChecked(True)
+
+        self.transpose_spin.setValue(preset.transpose)
+        self.quantize_check.setChecked(preset.quantize)
+        if preset.quantize_grid:
+            idx = self.quantize_combo.findText(preset.quantize_grid)
+            if idx >= 0:
+                self.quantize_combo.setCurrentIndex(idx)
+        self.min_note_spin.setValue(preset.min_note_ms)
+
+        if preset.sf2_search_hint and not preset.chiptune_mode:
+            self.style_hint_label.setText(
+                f"Tip: search for \"{preset.sf2_search_hint}\" in Browse Online."
+            )
+            self.style_hint_label.setVisible(True)
+        else:
+            self.style_hint_label.setVisible(False)
+
+        self._update_mode_visibility()
+        self._sync_control_state()
 
     def _mode_section(self) -> QWidget:
         frame = QFrame()
@@ -777,6 +839,7 @@ class MainWindow(QMainWindow):
             self.quantize_check,
             self.export_midi_check,
             self.min_note_spin,
+            self.style_combo,
         ):
             widget.setEnabled(enabled)
 
