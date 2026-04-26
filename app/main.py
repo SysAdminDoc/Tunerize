@@ -29,9 +29,20 @@ def _bundle_ffmpeg_on_path() -> None:
         pass
 
 
+def _is_cli_invocation() -> bool:
+    """Return True when the first non-option argument looks like a CLI sub-command."""
+    positional = [a for a in sys.argv[1:] if not a.startswith("-")]
+    return bool(positional) and positional[0] in ("convert",)
+
+
 def main() -> int:
-    _set_dpi_awareness()
     _bundle_ffmpeg_on_path()
+
+    if _is_cli_invocation():
+        from app.core.cli import run_cli
+        return run_cli(sys.argv[1:])
+
+    _set_dpi_awareness()
 
     from PySide6.QtWidgets import QApplication
 
