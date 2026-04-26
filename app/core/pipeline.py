@@ -43,12 +43,18 @@ class PipelineConfig:
     chiptune_voice_volumes: tuple[float, float, float, float] = (1.0, 1.0, 1.0, 1.0)
     chiptune_voice_mutes: tuple[bool, bool, bool, bool] = (False, False, False, False)
     chiptune_voice_solos: tuple[bool, bool, bool, bool] = (False, False, False, False)
+    output_format: str = "wav"
 
     def __post_init__(self) -> None:
         if not self.use_chiptune_engine and self.sf2_path is None:
             raise ValueError("sf2_path is required unless use_chiptune_engine=True")
         if self.chiptune_engine not in chiptune.SUPPORTED_ENGINES:
             raise ValueError(f"Unsupported chiptune_engine: {self.chiptune_engine}")
+        if self.output_format.lower() not in audio_io.SUPPORTED_OUTPUT_FORMATS:
+            raise ValueError(
+                f"Unsupported output_format: {self.output_format!r}. "
+                f"Supported: {audio_io.SUPPORTED_OUTPUT_FORMATS}"
+            )
         for name in (
             "chiptune_voice_volumes",
             "chiptune_voice_mutes",
@@ -145,7 +151,17 @@ class ConversionPipeline:
                 cancel_check=self._cancel_check,
             )
 
-        self._stage(f"Wrote {wav_out.name}", 100)
+        final_out = wav_out
+        fmt = cfg.output_format.lower()
+        if fmt != "wav":
+            ext = f".{fmt}"
+            final_out = wav_out.with_suffix(ext)
+            self._stage(f"Encoding to {fmt.upper()}...", 92)
+            audio_io.transcode_wav(wav_out, final_out, fmt)
+            with suppress(OSError):
+                wav_out.unlink()
+
+        self._stage(f"Wrote {final_out.name}", 100)
 
         midi_returned: Path | None = midi_out
         if not cfg.export_midi:
@@ -153,7 +169,7 @@ class ConversionPipeline:
                 midi_out.unlink()
             midi_returned = None
 
-        return midi_returned, wav_out
+        return midi_returned, final_out
 
     def _stem_separate(self, audio: Path) -> Path:
         try:

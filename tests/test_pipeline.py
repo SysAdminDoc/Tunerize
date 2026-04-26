@@ -92,3 +92,33 @@ def test_config_rejects_unknown_chiptune_engine(tmp_path):
             use_chiptune_engine=True,
             chiptune_engine="sid",
         )
+
+
+def test_config_default_output_format():
+    cfg = PipelineConfig(
+        audio_path=Path("dummy.mp3"),
+        output_dir=Path("out"),
+        use_chiptune_engine=True,
+    )
+    assert cfg.output_format == "wav"
+
+
+def test_config_accepts_supported_output_formats(tmp_path):
+    for fmt in ("wav", "flac", "ogg", "mp3"):
+        cfg = PipelineConfig(
+            audio_path=tmp_path / "in.mp3",
+            output_dir=tmp_path / "out",
+            use_chiptune_engine=True,
+            output_format=fmt,
+        )
+        assert cfg.output_format == fmt
+
+
+def test_config_rejects_unknown_output_format(tmp_path):
+    with pytest.raises(ValueError, match="Unsupported output_format"):
+        PipelineConfig(
+            audio_path=tmp_path / "in.mp3",
+            output_dir=tmp_path / "out",
+            use_chiptune_engine=True,
+            output_format="aiff",
+        )

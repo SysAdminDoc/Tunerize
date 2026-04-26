@@ -4,18 +4,18 @@ All notable changes to Tunerize are documented here. Format follows [Keep a Chan
 
 ## v0.4.0 — 2026-05-09
 
-SoundFont metadata viewer with live preset/bank/sample stats.
+SoundFont metadata viewer and MP3/FLAC/OGG output format support.
 
 ### Added
 - **SoundFont metadata label** — compact status line below the SoundFont selector showing preset count, bank count, sample count, and file size (e.g., "128 presets · 3 banks · 1,024 samples · 8.2 MB"). Reads the `shdr` chunk from the SF2 binary so sample count is always accurate. Hidden automatically when switching to chiptune mode.
+- **MP3 / FLAC / OGG output formats** — format selector (WAV / FLAC / OGG / MP3) added to the output row. FLAC and OGG use soundfile; MP3 transcodes via the bundled ffmpeg binary from imageio-ffmpeg. Intermediate WAV is deleted after a successful transcode.
 
 ### Changed
 - `SoundFontInfo` now carries `sample_count` (parsed from the `shdr` chunk) and a computed `bank_count` property.
 - SF2 parser refactored to traverse the `pdta` LIST sub-chunks in a single file-open pass, reading both `phdr` and `shdr` together instead of two separate reads.
+- `PipelineConfig` gains an `output_format` field (default `"wav"`) validated against `SUPPORTED_OUTPUT_FORMATS` in `audio_io`.
 
-
-
-More retro engines, smarter SoundFont onboarding, and a deeper chiptune voice model.
+## v0.3.0 — 2026-05-09
 
 ### Added
 - **Sega Genesis YM2612 FM engine** — 6-channel FM synthesis model with 2-operator FM waveforms (self-modulating feedback lead, 2:1 ratio harmony, sub-modulator bass), per-engine ADSR envelopes tuned to Genesis brass/electric-piano/slap-bass patches, a soft-saturation post-filter modelling the YM2612 9-bit DAC distortion characteristic, and a 6-slot internal voice allocator (3 lead / 2 harmony / 1 bass) merged into 4 mixer groups. Selected via the new "Sega Genesis FM" entry in the engine dropdown; voice labels update to FM Ch1-3/CH4-5/CH6/Rhythm.

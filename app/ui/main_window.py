@@ -275,9 +275,19 @@ class MainWindow(QMainWindow):
         self.output_btn = QPushButton("Choose…")
         self.output_btn.clicked.connect(self._pick_output)
 
+        self.format_combo = QComboBox()
+        self.format_combo.setToolTip("Output audio format")
+        self.format_combo.setAccessibleName("Output format")
+        self.format_combo.addItem("WAV", "wav")
+        self.format_combo.addItem("FLAC", "flac")
+        self.format_combo.addItem("OGG", "ogg")
+        self.format_combo.addItem("MP3", "mp3")
+        self.format_combo.setFixedWidth(72)
+
         row = QHBoxLayout()
         row.addWidget(QLabel("Output:"))
         row.addWidget(self.out_edit, 1)
+        row.addWidget(self.format_combo)
         row.addWidget(self.output_btn)
         return row
 
@@ -711,6 +721,7 @@ class MainWindow(QMainWindow):
             self.mode_sf2,
             self.out_edit,
             self.output_btn,
+            self.format_combo,
             self.demucs_check,
             self.sf_refresh_btn,
             self.sf_add_btn,
@@ -827,6 +838,7 @@ class MainWindow(QMainWindow):
                 min_note_ms=self.min_note_spin.value(),
                 stem_separate=self.demucs_check.isChecked(),
                 export_midi=self.export_midi_check.isChecked(),
+                output_format=self.format_combo.currentData(),
                 chiptune_engine=self._selected_chiptune_engine(),
                 chiptune_voice_volumes=voice_volumes,
                 chiptune_voice_mutes=voice_mutes,

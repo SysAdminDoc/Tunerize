@@ -63,7 +63,8 @@
 
 ## v0.6.0 — Power-user features
 - [ ] Batch mode (folder of audio → folder of WAVs)
-- [ ] MP3 / OGG / FLAC output options
+- [x] MP3 / OGG / FLAC output options
+  - Completed 2026-05-09: format combo (WAV/FLAC/OGG/MP3) added to output row. Pipeline transcodes from intermediate WAV using soundfile (FLAC/OGG) or bundled ffmpeg via imageio-ffmpeg (MP3). `output_format` field on `PipelineConfig`; validated in `__post_init__`. `SUPPORTED_OUTPUT_FORMATS` constant in `audio_io.py`. `transcode_wav()` helper.
 - [ ] Genre presets (chiptune, lo-fi, orchestral, etc.) — bundles SF2 + cleanup settings
 - [ ] CLI mode (`tunerize convert input.mp3 --sf2 nes.sf2 -o out.wav`)
 - [ ] Per-track multi-channel output (one SF2 per stem)
