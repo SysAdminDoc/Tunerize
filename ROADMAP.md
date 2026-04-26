@@ -37,6 +37,7 @@
 - [x] **SNES SPC700-style engine** — 8-voice with sample playback
   - Completed 2026-05-09: Multi-harmonic BRR waveforms (lead/harmony/bass), SNES-tuned ADSR envelopes, 4-tap Gaussian FIR warmth filter, vectorized multi-tap echo (delay/feedback/mix). 8-slot internal voice allocator merged into 4 mixer groups. Engine label "SNES SPC700" in the dropdown.
 - [ ] **Sega Genesis FM engine** — YM2612 6-channel FM synthesis
+  - Completed 2026-05-09: 2-operator FM waveforms (feedback lead, 2:1 harmony, sub-modulator bass), YM2612-tuned ADSR envelopes, soft-saturation DAC clip model, 6-slot internal allocator (3 lead/2 harmony/1 bass) merged into 4 mixer groups. Engine label "Sega Genesis FM" in dropdown; voice labels update to FM Ch1-3/CH4-5/CH6/Rhythm.
 - [x] Chiptune voice mixer in Advanced (per-voice volume, mute, solo)
   - Completed 2026-04-25: Advanced settings now control pulse 1, pulse 2, triangle, and noise voice volume/mute/solo before rendering.
 - [x] **Reddit r/soundfonts** browser provider (trending community packs)

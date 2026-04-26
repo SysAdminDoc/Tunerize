@@ -7,6 +7,7 @@ All notable changes to Tunerize are documented here. Format follows [Keep a Chan
 More retro engines, smarter SoundFont onboarding, and a deeper chiptune voice model.
 
 ### Added
+- **Sega Genesis YM2612 FM engine** — 6-channel FM synthesis model with 2-operator FM waveforms (self-modulating feedback lead, 2:1 ratio harmony, sub-modulator bass), per-engine ADSR envelopes tuned to Genesis brass/electric-piano/slap-bass patches, a soft-saturation post-filter modelling the YM2612 9-bit DAC distortion characteristic, and a 6-slot internal voice allocator (3 lead / 2 harmony / 1 bass) merged into 4 mixer groups. Selected via the new "Sega Genesis FM" entry in the engine dropdown; voice labels update to FM Ch1-3/CH4-5/CH6/Rhythm.
 - **SNES SPC700-style chiptune engine** — 8-voice BRR-sample model with multi-harmonic sine waveforms (lead/harmony/bass voice layers), per-engine ADSR envelopes tuned to SNES instrument recordings, a 4-tap Gaussian FIR warmth filter matching the SPC700 DSP interpolation table, and a vectorized multi-tap echo approximating the SPC700 echo buffer with configurable delay, feedback, and mix level. Selected via the new "SNES SPC700" entry in the engine dropdown.
 - **FluidR3 GM quick-download button** — a "Get FluidR3 GM…" button appears in the SoundFont row when no SoundFonts are installed, opening the online browser pre-filled with "FluidR3 GM" so new users can get a great default SoundFont in two clicks.
 - Drag-and-drop audio selection on the main window for all supported input formats.

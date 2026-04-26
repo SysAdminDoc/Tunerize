@@ -8,11 +8,13 @@ import soundfile as sf
 
 from app.core.chiptune import (
     ENGINE_GAME_BOY,
+    ENGINE_SEGA,
     ENGINE_SNES,
     ChiptuneError,
     _apply_snes_echo,
     _apply_snes_gaussian,
     _assign_voices,
+    _assign_voices_sega,
     _assign_voices_snes,
     _voice_mixer_gains,
     render,
@@ -213,3 +215,45 @@ def test_apply_snes_echo_produces_longer_signal():
     delay_samples = int(delay_ms * sr / 1000)
     echo_window = echoed[delay_samples: delay_samples + 200]
     assert np.max(np.abs(echo_window)) > 0.01
+
+
+# ---------- Sega Genesis YM2612 FM engine tests ----------
+
+def test_render_sega_produces_nonsilent_wav(tmp_path, synthetic_midi):
+    out = tmp_path / "sega.wav"
+    render(synthetic_midi, out, engine=ENGINE_SEGA)
+    assert out.exists()
+    audio, sr = sf.read(str(out))
+    assert sr == 44100
+    assert audio.shape[1] == 2
+    assert np.max(np.abs(audio)) > 0.01
+
+
+def test_render_sega_differs_from_nes(tmp_path, synthetic_midi):
+    out_nes = tmp_path / "nes.wav"
+    out_sega = tmp_path / "sega.wav"
+    render(synthetic_midi, out_nes)
+    render(synthetic_midi, out_sega, engine=ENGINE_SEGA)
+    nes_audio, _ = sf.read(str(out_nes))
+    sega_audio, _ = sf.read(str(out_sega))
+    min_len = min(len(nes_audio), len(sega_audio))
+    diff = np.max(np.abs(nes_audio[:min_len] - sega_audio[:min_len]))
+    assert diff > 0.01, "SEGA and NES renders should sound different"
+
+
+def test_assign_voices_sega_distributes_notes(synthetic_midi):
+    groups = _assign_voices_sega(synthetic_midi)
+    assert len(groups) == 4  # lead, harmony, bass, drum
+    total_notes = sum(len(g) for g in groups)
+    all_notes = [n for inst in synthetic_midi.instruments for n in inst.notes]
+    assert total_notes == len(all_notes)
+
+
+def test_assign_voices_sega_pitch_routing(synthetic_midi):
+    """High-pitch notes should land in the lead group; low-pitch in bass."""
+    groups = _assign_voices_sega(synthetic_midi)
+    lead_pitches = [n.pitch for n in groups[0]]
+    bass_pitches = [n.pitch for n in groups[2]]
+    # Any lead note should generally be above any bass note (not strict, but statistically true)
+    if lead_pitches and bass_pitches:
+        assert max(bass_pitches) < max(lead_pitches)

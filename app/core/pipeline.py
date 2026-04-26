@@ -196,4 +196,6 @@ def _chiptune_suffix(engine: str) -> str:
         return "gameboy"
     if engine == chiptune.ENGINE_SNES:
         return "snes"
+    if engine == chiptune.ENGINE_SEGA:
+        return "sega"
     return "chiptune"

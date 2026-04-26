@@ -37,7 +37,7 @@ from PySide6.QtWidgets import (
 
 from app import __version__
 from app.core.audio_io import SUPPORTED_INPUT_EXTS
-from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SNES
+from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
 from app.core.pipeline import ConversionPipeline, PipelineConfig
 from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
 from app.core.renderer import render_preview
@@ -337,6 +337,7 @@ class MainWindow(QMainWindow):
         self.engine_combo.addItem("NES APU-style", ENGINE_NES)
         self.engine_combo.addItem("Game Boy DMG", ENGINE_GAME_BOY)
         self.engine_combo.addItem("SNES SPC700", ENGINE_SNES)
+        self.engine_combo.addItem("Sega Genesis FM", ENGINE_SEGA)
         self.engine_combo.setToolTip("Choose the built-in chip model used by Chiptune mode.")
         self.engine_combo.currentIndexChanged.connect(lambda _idx: self._update_chiptune_engine_labels())
         layout.addWidget(engine_label, 5, 0)
@@ -889,6 +890,8 @@ class MainWindow(QMainWindow):
             names = ("Pulse 1 lead", "Pulse 2 harmony", "Wave channel", "Noise drums")
         elif engine == ENGINE_SNES:
             names = ("Lead (V1-2)", "Harmony (V3-4)", "Bass (V5-6)", "Noise (V7-8)")
+        elif engine == ENGINE_SEGA:
+            names = ("FM Lead (CH1-3)", "FM Harmony (CH4-5)", "FM Bass (CH6)", "Rhythm")
         else:
             names = ("Pulse 1 lead", "Pulse 2 harmony", "Triangle bass", "Noise drums")
         for label, name in zip(self.voice_name_labels, names, strict=True):

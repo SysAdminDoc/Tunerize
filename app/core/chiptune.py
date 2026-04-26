@@ -20,7 +20,8 @@ SAMPLE_RATE = 44100
 ENGINE_NES = "nes"
 ENGINE_GAME_BOY = "gameboy"
 ENGINE_SNES = "snes"
-SUPPORTED_ENGINES = (ENGINE_NES, ENGINE_GAME_BOY, ENGINE_SNES)
+ENGINE_SEGA = "sega"
+SUPPORTED_ENGINES = (ENGINE_NES, ENGINE_GAME_BOY, ENGINE_SNES, ENGINE_SEGA)
 
 V_PULSE_LEAD = 0
 V_PULSE_HARM = 1
@@ -99,6 +100,49 @@ def _wave_snes_bass(t: np.ndarray, freq: float) -> np.ndarray:
         + 0.22 * np.sin(4.0 * np.pi * freq * t)
         + 0.08 * np.sin(6.0 * np.pi * freq * t)
     ).astype(np.float32)
+    peak = float(np.max(np.abs(out))) or 1.0
+    return out / peak
+
+
+# Sega Genesis YM2612: 2-operator FM synthesis.
+# The YM2612 uses FM (frequency modulation) synthesis with 4 operators per
+# channel and 8 algorithms; we use a 2-op model (op2 modulates op1 carrier)
+# which captures the characteristic metallic/digital texture at low cost.
+# Parameters are tuned to match classic Genesis instrument patches.
+
+def _wave_sega_lead(t: np.ndarray, freq: float) -> np.ndarray:
+    """YM2612-style lead: 1:1 self-modulating FM (feedback brass/synth lead).
+
+    Algorithm: mod = sin(f·t + fb·mod_prev), out = sin(f·t + beta·mod)
+    Approximated stateless as sin(f·t + beta·sin(f·t + fb·sin(f·t))).
+    """
+    phase = 2.0 * np.pi * freq * t
+    inner_mod = np.sin(phase)
+    mod = np.sin(phase + 0.35 * inner_mod)  # single feedback iteration
+    out = np.sin(phase + 2.8 * mod).astype(np.float32)
+    peak = float(np.max(np.abs(out))) or 1.0
+    return out / peak
+
+
+def _wave_sega_harm(t: np.ndarray, freq: float) -> np.ndarray:
+    """YM2612-style harmony: 2:1 modulator ratio (electric piano / mallet).
+
+    Modulator at 2x carrier freq gives the characteristic YM2612 bell/ep tone.
+    """
+    mod = np.sin(4.0 * np.pi * freq * t)         # modulator at 2× freq
+    out = np.sin(2.0 * np.pi * freq * t + 1.4 * mod).astype(np.float32)
+    peak = float(np.max(np.abs(out))) or 1.0
+    return out / peak
+
+
+def _wave_sega_bass(t: np.ndarray, freq: float) -> np.ndarray:
+    """YM2612-style bass: 0.5:1 sub-modulator — punchy FM bass.
+
+    Sub-ratio modulator (half the carrier freq) produces the YM2612's
+    characteristic low-mid punch heard on Genesis bass patches.
+    """
+    mod = np.sin(np.pi * freq * t)               # modulator at 0.5× freq
+    out = np.sin(2.0 * np.pi * freq * t + 3.8 * mod).astype(np.float32)
     peak = float(np.max(np.abs(out))) or 1.0
     return out / peak
 
@@ -197,6 +241,21 @@ def _env_snes_bass(n: int, sr: int) -> np.ndarray:
     return _adsr(n, sr, attack_ms=4.0, decay_ms=80.0, sustain=0.88, release_ms=180.0)
 
 
+def _env_sega_lead(n: int, sr: int) -> np.ndarray:
+    """YM2612 lead envelope: punchy attack, medium decay, sustain typical of brass patches."""
+    return _adsr(n, sr, attack_ms=3.0, decay_ms=60.0, sustain=0.62, release_ms=110.0)
+
+
+def _env_sega_harm(n: int, sr: int) -> np.ndarray:
+    """YM2612 harmony envelope: slightly slower attack for electric-piano / mallet feel."""
+    return _adsr(n, sr, attack_ms=6.0, decay_ms=110.0, sustain=0.50, release_ms=170.0)
+
+
+def _env_sega_bass(n: int, sr: int) -> np.ndarray:
+    """YM2612 bass envelope: instant attack, fast decay, low sustain — classic FM slap bass."""
+    return _adsr(n, sr, attack_ms=1.0, decay_ms=28.0, sustain=0.68, release_ms=55.0)
+
+
 def _env_drum(n: int, sr: int) -> np.ndarray:
     decay_samples = min(n, max(1, int(0.18 * sr)))
     env = np.zeros(n, dtype=np.float32)
@@ -220,6 +279,13 @@ def _voice_label(idx: int, engine: str = ENGINE_NES) -> str:
             "Voices 3-4 (harmony)",
             "Voices 5-6 (bass)",
             "Voices 7-8 (noise/drums)",
+        )[idx]
+    if engine == ENGINE_SEGA:
+        return (
+            "FM Ch1-3 (lead)",
+            "FM Ch4-5 (harmony)",
+            "FM Ch6 (bass)",
+            "Noise (drums)",
         )[idx]
     return (
         "Pulse 1 (lead, 50% duty)",
@@ -300,6 +366,23 @@ def _apply_snes_echo(
     return out
 
 
+def _apply_sega_clip(mix: np.ndarray, threshold: float = 0.72) -> np.ndarray:
+    """Soft saturation approximating the YM2612 DAC's characteristic digital edge.
+
+    The YM2612 used a 9-bit DAC that introduced a subtle but recognizable
+    harmonic distortion at higher amplitudes. We model this with a piecewise
+    cubic soft-clip: linear below threshold, curved above it, clamped at 1.0.
+    This adds odd-order harmonics without hard digital square-wave distortion.
+    """
+    out = mix.copy()
+    high = np.abs(out) > threshold
+    sign = np.sign(out[high])
+    excess = (np.abs(out[high]) - threshold) / (1.0 - threshold)  # 0-1 in overdrive zone
+    curved = threshold + (1.0 - threshold) * (1.5 * excess - 0.5 * excess ** 3)
+    out[high] = sign * np.clip(curved, 0.0, 1.0)
+    return out.astype(np.float32)
+
+
 def _assign_voices_snes(midi: pretty_midi.PrettyMIDI) -> list[list[_ChipNote]]:
     """8-voice SNES allocator, output merged into 4 mixer groups.
 
@@ -342,6 +425,53 @@ def _assign_voices_snes(midi: pretty_midi.PrettyMIDI) -> list[list[_ChipNote]]:
     lead = sorted(groups[0] + groups[1], key=lambda n: n.start)
     harm = sorted(groups[2] + groups[3], key=lambda n: n.start)
     bass = sorted(groups[4] + groups[5], key=lambda n: n.start)
+    return [lead, harm, bass, drum]
+
+
+def _assign_voices_sega(midi: pretty_midi.PrettyMIDI) -> list[list[_ChipNote]]:
+    """6-channel YM2612 allocator, output merged into 4 mixer groups.
+
+    The YM2612 has 6 FM channels; channel 6 can switch to a DAC/noise rhythm
+    mode. We model this as:
+        Slots 0-2 -> lead group    (3 channels for high-pitch melody/brass)
+        Slots 3-4 -> harmony group (2 channels for mid-range chords)
+        Slot 5    -> bass group    (1 channel for low bass)
+
+    Drums are always separated into the noise group (equivalent to YM2612
+    channel-6 rhythm mode).
+
+    More slots for lead reflects how Genesis composers dedicated more channels
+    to the primary melody to compensate for FM's limited polyphony.
+    """
+    drum: list[_ChipNote] = []
+    melodic: list[_ChipNote] = []
+    for inst in midi.instruments:
+        for n in inst.notes:
+            cn = _ChipNote(pitch=int(n.pitch), start=float(n.start),
+                           end=float(n.end), velocity=int(n.velocity))
+            (drum if inst.is_drum else melodic).append(cn)
+
+    melodic.sort(key=lambda n: (n.start, n.pitch))
+
+    free_at = [0.0] * 6
+    groups: list[list[_ChipNote]] = [[], [], [], [], [], []]
+
+    for n in melodic:
+        if n.pitch >= 65:
+            candidates = [0, 1, 2, 3, 4]   # lead channels first, then harmony
+        elif n.pitch >= 46:
+            candidates = [3, 4, 0, 1, 2]   # harmony channels first, then lead
+        else:
+            candidates = [5, 3, 4]         # bass slot first, then harmony
+
+        chosen = min(candidates, key=lambda i: free_at[i])
+        groups[chosen].append(n)
+        free_at[chosen] = max(free_at[chosen], n.end)
+
+    # Merge into 4 mixer groups: lead=slots 0-2, harm=slots 3-4, bass=slot 5
+    lead = sorted(groups[0] + groups[1] + groups[2], key=lambda n: n.start)
+    harm = sorted(groups[3] + groups[4], key=lambda n: n.start)
+    bass = groups[5]
     return [lead, harm, bass, drum]
 
 
@@ -458,6 +588,15 @@ def _voice_patch(engine: str, voice_idx: int):
             return _wave_snes_bass, _env_snes_bass, BASE_VOICE_GAINS[voice_idx]
         return None, _env_drum, BASE_VOICE_GAINS[voice_idx]
 
+    if engine == ENGINE_SEGA:
+        if voice_idx == V_PULSE_LEAD:
+            return _wave_sega_lead, _env_sega_lead, BASE_VOICE_GAINS[voice_idx]
+        if voice_idx == V_PULSE_HARM:
+            return _wave_sega_harm, _env_sega_harm, BASE_VOICE_GAINS[voice_idx]
+        if voice_idx == V_TRIANGLE:
+            return _wave_sega_bass, _env_sega_bass, BASE_VOICE_GAINS[voice_idx]
+        return None, _env_drum, BASE_VOICE_GAINS[voice_idx]
+
     if voice_idx == V_PULSE_LEAD:
         return _wave_pulse_lead, _env_pulse, BASE_VOICE_GAINS[voice_idx]
     if voice_idx == V_PULSE_HARM:
@@ -499,6 +638,9 @@ def render(
     if engine == ENGINE_SNES:
         voices = _assign_voices_snes(midi)
         engine_label = "SNES SPC700"
+    elif engine == ENGINE_SEGA:
+        voices = _assign_voices_sega(midi)
+        engine_label = "Sega Genesis YM2612"
     else:
         voices = _assign_voices(midi)
         engine_label = "Game Boy DMG" if engine == ENGINE_GAME_BOY else "NES"
@@ -526,6 +668,8 @@ def render(
     if engine == ENGINE_SNES:
         mix = _apply_snes_gaussian(mix)
         mix = _apply_snes_echo(mix, sample_rate)
+    elif engine == ENGINE_SEGA:
+        mix = _apply_sega_clip(mix)
 
     peak = float(np.max(np.abs(mix)))
     if peak <= 0.0:
