@@ -628,7 +628,7 @@ def render(
     log = log or (lambda _m: None)
     if engine not in SUPPORTED_ENGINES:
         raise ChiptuneError(f"Unsupported chiptune engine: {engine}")
-    if isinstance(midi, (str, Path)):
+    if isinstance(midi, str | Path):
         midi = pretty_midi.PrettyMIDI(str(midi))
 
     note_count = sum(len(inst.notes) for inst in midi.instruments)

@@ -9,6 +9,8 @@ import mido
 import numpy as np
 import soundfile as sf
 
+from app.core.runtime import ensure_bundled_runtime_paths
+
 
 class RenderError(Exception):
     pass
@@ -31,13 +33,14 @@ def render(
     cancel_check: Callable[[], bool] | None = None,
 ) -> Path:
     """Render midi_path through sf2_path to output_wav_path (16-bit stereo WAV)."""
+    ensure_bundled_runtime_paths()
     try:
         import fluidsynth
     except ImportError as e:
         raise RenderError(
             "pyFluidSynth is not installed.\n"
             "Run: pip install pyFluidSynth\n"
-            "Also install the FluidSynth runtime — Windows: `winget install FluidSynth.FluidSynth`"
+            "Source installs also need the FluidSynth runtime on PATH."
         ) from e
 
     try:
@@ -45,7 +48,7 @@ def render(
     except Exception as e:
         raise RenderError(
             f"Could not start FluidSynth: {e}\n"
-            "Ensure the FluidSynth runtime DLL/library is on PATH."
+            "Ensure the FluidSynth runtime DLL/library is bundled or on PATH."
         ) from e
 
     try:
@@ -129,13 +132,14 @@ def render_preview(
     cancel_check: Callable[[], bool] | None = None,
 ) -> Path:
     """Render a short preset audition phrase through FluidSynth."""
+    ensure_bundled_runtime_paths()
     try:
         import fluidsynth
     except ImportError as e:
         raise RenderError(
             "pyFluidSynth is not installed.\n"
             "Run: pip install pyFluidSynth\n"
-            "Also install the FluidSynth runtime — Windows: `winget install FluidSynth.FluidSynth`"
+            "Source installs also need the FluidSynth runtime on PATH."
         ) from e
 
     try:
@@ -143,7 +147,7 @@ def render_preview(
     except Exception as e:
         raise RenderError(
             f"Could not start FluidSynth: {e}\n"
-            "Ensure the FluidSynth runtime DLL/library is on PATH."
+            "Ensure the FluidSynth runtime DLL/library is bundled or on PATH."
         ) from e
 
     try:

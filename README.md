@@ -1,6 +1,6 @@
 # Tunerize
 
-[![Version](https://img.shields.io/badge/version-0.3.0-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
+[![Version](https://img.shields.io/badge/version-0.4.1-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square&logo=windows)](https://www.microsoft.com/windows)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -41,8 +41,8 @@ One window, one button, no cloud.
 ### Prerequisites
 
 - **Python 3.11 or 3.12** (3.13 may work but is not yet validated against `basic-pitch` ONNX)
-- **FluidSynth** — *only required for SoundFont mode*; Chiptune Mode works without it.
-  - Windows: `winget install FluidSynth.FluidSynth` *or* download from [fluidsynth.org](https://www.fluidsynth.org/) and put `fluidsynth.exe` on PATH
+- **FluidSynth** — *only required for SoundFont mode when running from source*; Chiptune Mode works without it, and the Windows packaged EXE bundles the FluidSynth runtime.
+  - Windows source/dev: `winget install FluidSynth.FluidSynth` *or* download from [fluidsynth.org](https://www.fluidsynth.org/) and put `fluidsynth.exe` on PATH
   - macOS: `brew install fluid-synth`
   - Linux: `sudo apt install fluidsynth` (or distro equivalent)
 - **FFmpeg** (MP3 decoding) — bundled via `imageio-ffmpeg`; no separate install needed
@@ -118,7 +118,7 @@ python -m app.main           # run the app
 ruff check .                 # lint
 ```
 
-Build a Windows binary (after PyInstaller is installed):
+Build a one-file Windows binary (after dev requirements are installed). The build script bundles FluidSynth from PATH, or from `TUNERIZE_FLUIDSYNTH_DIR` when set to the FluidSynth `bin` folder:
 
 ```bash
 python build/build_windows.py

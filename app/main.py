@@ -6,6 +6,8 @@ import sys
 from contextlib import suppress
 from pathlib import Path
 
+from app.core.runtime import ensure_bundled_runtime_paths
+
 
 def _set_dpi_awareness() -> None:
     if sys.platform != "win32":
@@ -29,6 +31,11 @@ def _bundle_ffmpeg_on_path() -> None:
         pass
 
 
+def _prepare_native_runtime_paths() -> None:
+    ensure_bundled_runtime_paths()
+    _bundle_ffmpeg_on_path()
+
+
 def _is_cli_invocation() -> bool:
     """Return True when the first non-option argument looks like a CLI sub-command."""
     positional = [a for a in sys.argv[1:] if not a.startswith("-")]
@@ -36,7 +43,7 @@ def _is_cli_invocation() -> bool:
 
 
 def main() -> int:
-    _bundle_ffmpeg_on_path()
+    _prepare_native_runtime_paths()
 
     if _is_cli_invocation():
         from app.core.cli import run_cli
