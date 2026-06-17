@@ -10,6 +10,7 @@ import soundfile as sf
 
 SUPPORTED_INPUT_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aiff", ".aif"}
 SUPPORTED_OUTPUT_FORMATS = ("wav", "flac", "ogg", "mp3")
+MAX_INPUT_SIZE_BYTES = 500 * 1024 * 1024  # 500 MB
 
 
 class AudioError(Exception):
@@ -25,8 +26,14 @@ def validate_audio(path: Path) -> None:
             f"Unsupported audio extension: {path.suffix} "
             f"(supported: {sorted(SUPPORTED_INPUT_EXTS)})"
         )
-    if path.stat().st_size == 0:
+    file_size = path.stat().st_size
+    if file_size == 0:
         raise AudioError(f"Audio file is empty: {path}")
+    if file_size > MAX_INPUT_SIZE_BYTES:
+        raise AudioError(
+            f"Audio file is too large ({file_size / (1024 * 1024):.0f} MB). "
+            f"Maximum supported size is {MAX_INPUT_SIZE_BYTES / (1024 * 1024):.0f} MB."
+        )
 
 
 def load_audio(path: Path, sample_rate: int = 22050) -> tuple[np.ndarray, int]:

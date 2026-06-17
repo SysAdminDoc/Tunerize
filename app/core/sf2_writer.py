@@ -39,6 +39,8 @@ SAMPLE_NO_LOOP = 0
 # 46 zero samples appended after each sample (SF2 spec requirement)
 SAMPLE_PAD = 46
 
+MAX_SAMPLE_SIZE_BYTES = 100 * 1024 * 1024  # 100 MB per sample
+
 
 @dataclass
 class SF2Sample:
@@ -56,6 +58,12 @@ class SF2Sample:
             raise SF2WriteError(f"Sample '{self.name}' must be mono (1D array)")
         if self.data.dtype != np.int16:
             self.data = (np.clip(self.data.astype(np.float64), -1.0, 1.0) * 32767).astype(np.int16)
+        sample_bytes = self.data.nbytes
+        if sample_bytes > MAX_SAMPLE_SIZE_BYTES:
+            raise SF2WriteError(
+                f"Sample '{self.name}' is too large ({sample_bytes / (1024 * 1024):.0f} MB). "
+                f"Maximum is {MAX_SAMPLE_SIZE_BYTES / (1024 * 1024):.0f} MB."
+            )
         if self.loop_end == 0 and self.loop_enabled:
             self.loop_end = len(self.data) - 1
 

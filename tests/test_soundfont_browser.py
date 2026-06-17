@@ -495,6 +495,32 @@ def test_download_uses_explicit_bundle_name(tmp_path):
     assert path.read_bytes() == bundle
 
 
+def test_download_sanitizes_traversal_filename(tmp_path):
+    """download_name containing path traversal sequences must be sanitized."""
+    sf2_header = b"RIFF" + struct.pack("<I", 4) + b"sfbk"
+    session = MagicMock()
+    session.headers = {}
+    session.get.return_value = _fake_response(content=sf2_header + b"\x00" * 32)
+    result = SoundFontResult(
+        source="test",
+        name="evil",
+        author=None,
+        description="",
+        license="MIT",
+        file_url="https://example.com/evil.sf2",
+        file_size_bytes=len(sf2_header) + 32,
+        tags=("soundfont",),
+        download_count=0,
+        detail_url="https://example.com",
+        download_name="../../etc/evil.sf2",
+    )
+    lib = tmp_path / "lib"
+    path = download_to_library(result, lib, session=session)
+    assert path.parent == lib
+    assert ".." not in path.name
+    assert "/" not in path.name
+
+
 def test_safe_int_handles_garbage():
     from app.core.soundfont_browser import _safe_int
     assert _safe_int(None) is None

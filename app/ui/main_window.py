@@ -936,7 +936,6 @@ class MainWindow(QMainWindow):
             self.format_combo,
             self.demucs_check,
             self.multi_channel_check,
-            self.monitor_check,
             self.sf_refresh_btn,
             self.sf_add_btn,
             self.sf_edit_btn,
@@ -976,6 +975,13 @@ class MainWindow(QMainWindow):
         self.setAcceptDrops(enabled)
         # Show the FluidR3 quick-download button only when no soundfonts are present
         self.sf_fluids_btn.setVisible(not self._has_soundfonts)
+
+        multi_ch = self.multi_channel_check.isChecked()
+        self.monitor_check.setEnabled(enabled and not multi_ch)
+        if multi_ch:
+            self.monitor_check.setToolTip("Monitoring is not available in multi-channel mode.")
+        else:
+            self.monitor_check.setToolTip("Stream audio to your speakers in real time as the conversion runs.")
 
         mixer_enabled = enabled and self.mode_chiptune.isChecked()
         for widget in self._chiptune_mixer_widgets:

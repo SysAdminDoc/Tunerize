@@ -128,7 +128,13 @@ class ConversionPipeline:
         midi_data.write(str(midi_out))
 
         if cfg.use_chiptune_engine:
-            engine_label = "Game Boy DMG" if cfg.chiptune_engine == chiptune.ENGINE_GAME_BOY else "NES-style"
+            engine_labels = {
+                chiptune.ENGINE_NES: "NES APU",
+                chiptune.ENGINE_GAME_BOY: "Game Boy DMG",
+                chiptune.ENGINE_SNES: "SNES SPC700",
+                chiptune.ENGINE_SEGA: "Sega Genesis YM2612",
+            }
+            engine_label = engine_labels.get(cfg.chiptune_engine, cfg.chiptune_engine)
             self._stage(f"Rendering chiptune ({engine_label} synth)...", 75)
             chiptune.render(
                 midi=midi_data,

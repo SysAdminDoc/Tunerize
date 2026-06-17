@@ -450,7 +450,9 @@ def download_to_library(
 
     total = result.file_size_bytes or _content_length(r)
 
-    filename = result.download_name or _filename_from_url(result.file_url) or (_safe_filename(result.name) + ".sf2")
+    raw_name = result.download_name or _filename_from_url(result.file_url) or (_safe_filename(result.name) + ".sf2")
+    stem, suffix = Path(raw_name).stem, Path(raw_name).suffix
+    filename = _safe_filename(stem) + (suffix if suffix else ".sf2")
     dest = library_dir / filename
     if dest.exists():
         i = 1

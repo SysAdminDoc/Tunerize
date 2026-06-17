@@ -7,7 +7,7 @@ import numpy as np
 import pytest
 import soundfile as sf
 
-from app.core.audio_io import SUPPORTED_OUTPUT_FORMATS, AudioError, transcode_wav
+from app.core.audio_io import MAX_INPUT_SIZE_BYTES, SUPPORTED_OUTPUT_FORMATS, AudioError, transcode_wav, validate_audio
 
 
 def _write_test_wav(path: Path, sr: int = 22050, duration: float = 0.1) -> Path:
@@ -83,3 +83,10 @@ def test_supported_output_formats_constant():
     assert "flac" in SUPPORTED_OUTPUT_FORMATS
     assert "ogg" in SUPPORTED_OUTPUT_FORMATS
     assert "mp3" in SUPPORTED_OUTPUT_FORMATS
+
+
+def test_validate_audio_rejects_oversized_file(tmp_path):
+    big = tmp_path / "huge.wav"
+    big.write_bytes(b"RIFF" + b"\x00" * (MAX_INPUT_SIZE_BYTES + 100))
+    with pytest.raises(AudioError, match="too large"):
+        validate_audio(big)

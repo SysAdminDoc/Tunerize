@@ -1,6 +1,7 @@
 """Tunerize entrypoint."""
 from __future__ import annotations
 
+import multiprocessing
 import os
 import sys
 from contextlib import suppress
@@ -43,6 +44,7 @@ def _is_cli_invocation() -> bool:
 
 
 def main() -> int:
+    multiprocessing.freeze_support()
     _prepare_native_runtime_paths()
 
     if _is_cli_invocation():
