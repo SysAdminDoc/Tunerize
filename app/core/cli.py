@@ -59,6 +59,12 @@ def _add_conversion_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument("--stem-separate", action="store_true", help="Run Demucs stem separation before transcription.")
     parser.add_argument("--multi-channel", action="store_true", help="Render each Demucs stem separately (requires Demucs).")
+    parser.add_argument(
+        "--demucs-model",
+        default="htdemucs",
+        metavar="MODEL",
+        help="Demucs model name (default: htdemucs). Use htdemucs_ft for higher quality.",
+    )
     parser.add_argument("--no-midi", action="store_true", help="Delete the intermediate .mid file after rendering.")
     parser.add_argument(
         "--onset-threshold",
@@ -189,6 +195,7 @@ def _make_config(args, audio_path: Path, out_dir: Path, sf2_path: Path | None):
         output_format=args.format,
         onset_threshold=args.onset_threshold,
         frame_threshold=args.frame_threshold,
+        demucs_model=args.demucs_model,
     )
 
 

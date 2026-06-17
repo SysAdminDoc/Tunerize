@@ -7,7 +7,10 @@ pre-fill the online SoundFont browser.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import json
+from contextlib import suppress
+from dataclasses import asdict, dataclass
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -115,3 +118,48 @@ def get_genre_presets() -> list[GenrePreset]:
     if _PRESETS is None:
         _PRESETS = _make_presets()
     return _PRESETS
+
+
+USER_PRESETS_DIR = Path.home() / ".tunerize" / "presets"
+
+
+def save_user_preset(preset: GenrePreset) -> Path:
+    """Save a user-created preset to disk. Returns the file path."""
+    USER_PRESETS_DIR.mkdir(parents=True, exist_ok=True)
+    safe_name = "".join(c for c in preset.name if c.isalnum() or c in "-_ ").strip() or "preset"
+    path = USER_PRESETS_DIR / f"{safe_name}.json"
+    data = asdict(preset)
+    path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+    return path
+
+
+def load_user_presets() -> list[GenrePreset]:
+    """Load all user-created presets from disk."""
+    if not USER_PRESETS_DIR.is_dir():
+        return []
+    presets: list[GenrePreset] = []
+    for p in sorted(USER_PRESETS_DIR.glob("*.json")):
+        with suppress(OSError, ValueError, KeyError, TypeError):
+            data = json.loads(p.read_text(encoding="utf-8"))
+            presets.append(GenrePreset(
+                name=data["name"],
+                description=data.get("description", ""),
+                chiptune_mode=data["chiptune_mode"],
+                engine=data.get("engine"),
+                quantize=data.get("quantize", False),
+                quantize_grid=data.get("quantize_grid", "1/16"),
+                transpose=data.get("transpose", 0),
+                min_note_ms=data.get("min_note_ms", 58),
+                sf2_search_hint=data.get("sf2_search_hint", ""),
+            ))
+    return presets
+
+
+def delete_user_preset(name: str) -> bool:
+    """Delete a user preset by name. Returns True if deleted."""
+    safe_name = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()
+    path = USER_PRESETS_DIR / f"{safe_name}.json"
+    if path.exists():
+        path.unlink()
+        return True
+    return False

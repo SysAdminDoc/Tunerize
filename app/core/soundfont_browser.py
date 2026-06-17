@@ -58,9 +58,44 @@ class Provider(Protocol):
     def search(self, query: str = "", *, limit: int = 50) -> list[SoundFontResult]: ...
 
 
+# ---------- shared cache mixin ----------
+
+class _CachedProvider:
+    """Shared disk cache logic for all browser providers."""
+
+    _cache_dir: Path | None
+    _cache_ttl: int
+    _cache_prefix: str = ""
+
+    def _cache_key(self, endpoint: str, params: dict) -> str:
+        raw = endpoint + "?" + urlencode(sorted(params.items()))
+        return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
+
+    def _get_cache(self, key: str):
+        if self._cache_dir is None:
+            return None
+        path = self._cache_dir / f"{self._cache_prefix}{key}.json"
+        if not path.exists():
+            return None
+        if time.time() - path.stat().st_mtime > self._cache_ttl:
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
+    def _set_cache(self, key: str, data) -> None:
+        if self._cache_dir is None:
+            return
+        path = self._cache_dir / f"{self._cache_prefix}{key}.json"
+        with suppress(OSError):
+            path.write_text(json.dumps(data), encoding="utf-8")
+        evict_stale_cache(self._cache_dir)
+
+
 # ---------- musical-artifacts.com ----------
 
-class MusicalArtifactsProvider:
+class MusicalArtifactsProvider(_CachedProvider):
     """Client for musical-artifacts.com REST/JSON API.
 
     Docs: https://github.com/lfzawacki/musical-artifacts/wiki/API-Documentation
@@ -134,41 +169,14 @@ class MusicalArtifactsProvider:
 
         return [r for r in results if r.file_url and self._looks_like_soundfont(r)]
 
-    # ----- helpers -----
-
     @staticmethod
     def _looks_like_soundfont(r: SoundFontResult) -> bool:
         return _looks_like_soundfont(r)
 
-    def _cache_key(self, endpoint: str, params: dict) -> str:
-        raw = endpoint + "?" + urlencode(sorted(params.items()))
-        return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
-
-    def _get_cache(self, key: str):
-        if self._cache_dir is None:
-            return None
-        path = self._cache_dir / f"{key}.json"
-        if not path.exists():
-            return None
-        if time.time() - path.stat().st_mtime > self._cache_ttl:
-            return None
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-
-    def _set_cache(self, key: str, data) -> None:
-        if self._cache_dir is None:
-            return
-        path = self._cache_dir / f"{key}.json"
-        with suppress(OSError):
-            path.write_text(json.dumps(data), encoding="utf-8")
-        evict_stale_cache(self._cache_dir)
-
 
 # ---------- github.com ----------
 
-class GitHubTopicProvider:
+class GitHubTopicProvider(_CachedProvider):
     """Search public GitHub repositories tagged `soundfont`.
 
     Results install as repository ZIP bundles because GitHub repositories can
@@ -190,6 +198,7 @@ class GitHubTopicProvider:
         self._session.headers.setdefault("Accept", "application/vnd.github+json")
         self._cache_dir = cache_dir
         self._cache_ttl = cache_ttl_seconds
+        self._cache_prefix = "github-"
         if cache_dir is not None:
             cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -262,34 +271,10 @@ class GitHubTopicProvider:
 
         return [r for r in results if r.file_url and _looks_like_soundfont(r)]
 
-    def _cache_key(self, endpoint: str, params: dict) -> str:
-        raw = endpoint + "?" + urlencode(sorted(params.items()))
-        return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
-
-    def _get_cache(self, key: str):
-        if self._cache_dir is None:
-            return None
-        path = self._cache_dir / f"github-{key}.json"
-        if not path.exists():
-            return None
-        if time.time() - path.stat().st_mtime > self._cache_ttl:
-            return None
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-
-    def _set_cache(self, key: str, data) -> None:
-        if self._cache_dir is None:
-            return
-        path = self._cache_dir / f"github-{key}.json"
-        with suppress(OSError):
-            path.write_text(json.dumps(data), encoding="utf-8")
-
 
 # ---------- reddit.com/r/soundfonts ----------
 
-class RedditSoundFontsProvider:
+class RedditSoundFontsProvider(_CachedProvider):
     """Search r/soundfonts for community-posted packs and leads.
 
     Reddit posts are often discussions or point to file-hosting pages, so not
@@ -313,6 +298,7 @@ class RedditSoundFontsProvider:
         self._session.headers.setdefault("Accept", "application/json")
         self._cache_dir = cache_dir
         self._cache_ttl = cache_ttl_seconds
+        self._cache_prefix = "reddit-"
         if cache_dir is not None:
             cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -397,30 +383,6 @@ class RedditSoundFontsProvider:
             )
 
         return [r for r in results if r.detail_url]
-
-    def _cache_key(self, endpoint: str, params: dict) -> str:
-        raw = endpoint + "?" + urlencode(sorted(params.items()))
-        return hashlib.sha1(raw.encode("utf-8"), usedforsecurity=False).hexdigest()
-
-    def _get_cache(self, key: str):
-        if self._cache_dir is None:
-            return None
-        path = self._cache_dir / f"reddit-{key}.json"
-        if not path.exists():
-            return None
-        if time.time() - path.stat().st_mtime > self._cache_ttl:
-            return None
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None
-
-    def _set_cache(self, key: str, data) -> None:
-        if self._cache_dir is None:
-            return
-        path = self._cache_dir / f"reddit-{key}.json"
-        with suppress(OSError):
-            path.write_text(json.dumps(data), encoding="utf-8")
 
 
 # ---------- downloader ----------

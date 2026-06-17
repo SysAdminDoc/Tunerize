@@ -38,7 +38,7 @@ from PySide6.QtWidgets import (
 from app import __version__
 from app.core.audio_io import SUPPORTED_INPUT_EXTS
 from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
-from app.core.genre_presets import GenrePreset, get_genre_presets
+from app.core.genre_presets import GenrePreset, delete_user_preset, get_genre_presets, load_user_presets, save_user_preset
 from app.core.monitor import AudioMonitor, is_monitoring_available
 from app.core.pipeline import ConversionPipeline, MultiChannelPipeline, PipelineConfig, compute_output_path
 from app.core.recent_soundfonts import (
@@ -314,9 +314,7 @@ class MainWindow(QMainWindow):
     def _style_preset_row(self) -> QHBoxLayout:
         self.style_combo = QComboBox()
         self.style_combo.setMinimumWidth(180)
-        self.style_combo.addItem("Custom (current settings)", None)
-        for preset in get_genre_presets():
-            self.style_combo.addItem(preset.name, preset)
+        self._populate_style_combo()
         self.style_combo.setToolTip("Apply a named style — sets mode, engine, and conversion options in one click.")
 
         self.style_hint_label = QLabel()
@@ -326,12 +324,48 @@ class MainWindow(QMainWindow):
 
         self.style_combo.activated.connect(self._apply_genre_preset_by_idx)
 
+        self.save_preset_btn = QPushButton("Save Preset…")
+        self.save_preset_btn.setToolTip("Save current settings as a reusable preset")
+        self.save_preset_btn.clicked.connect(self._save_current_preset)
+
         row = QHBoxLayout()
         row.addWidget(QLabel("Style:"))
         row.addWidget(self.style_combo)
+        row.addWidget(self.save_preset_btn)
         row.addWidget(self.style_hint_label, 1)
         row.addStretch(1)
         return row
+
+    def _populate_style_combo(self) -> None:
+        current = self.style_combo.currentData()
+        self.style_combo.clear()
+        self.style_combo.addItem("Custom (current settings)", None)
+        for preset in get_genre_presets():
+            self.style_combo.addItem(preset.name, preset)
+        user_presets = load_user_presets()
+        if user_presets:
+            self.style_combo.insertSeparator(self.style_combo.count())
+            for preset in user_presets:
+                self.style_combo.addItem(f"⚙ {preset.name}", preset)
+
+    def _save_current_preset(self) -> None:
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(self, "Save Preset", "Preset name:")
+        if not ok or not name.strip():
+            return
+        preset = GenrePreset(
+            name=name.strip(),
+            description="User-created preset",
+            chiptune_mode=self.mode_chiptune.isChecked(),
+            engine=self._selected_chiptune_engine() if self.mode_chiptune.isChecked() else None,
+            quantize=self.quantize_check.isChecked(),
+            quantize_grid=self.quantize_combo.currentText(),
+            transpose=self.transpose_spin.value(),
+            min_note_ms=self.min_note_spin.value(),
+        )
+        save_user_preset(preset)
+        self._populate_style_combo()
+        self._log(f"Preset saved: {name.strip()}")
 
     @Slot(int)
     def _apply_genre_preset_by_idx(self, idx: int) -> None:

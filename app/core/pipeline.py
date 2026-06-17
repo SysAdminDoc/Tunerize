@@ -49,6 +49,7 @@ class PipelineConfig:
     output_format: str = "wav"
     onset_threshold: float = 0.5
     frame_threshold: float = 0.3
+    demucs_model: str = "htdemucs"
 
     def __post_init__(self) -> None:
         if not self.use_chiptune_engine and self.sf2_path is None:
@@ -201,7 +202,7 @@ class ConversionPipeline:
             ) from e
 
         self._log("Loading htdemucs model (downloads on first use, ~85MB)...")
-        model = get_model("htdemucs")
+        model = get_model(self.config.demucs_model)
         model.eval()
 
         wav = AudioFile(str(audio)).read(
@@ -377,7 +378,7 @@ class MultiChannelPipeline:
             ) from exc
 
         self._log("Loading htdemucs model (downloads on first use, ~85MB)...")
-        model = get_model("htdemucs")
+        model = get_model(self.config.demucs_model)
         model.eval()
 
         wav = AudioFile(str(audio)).read(
