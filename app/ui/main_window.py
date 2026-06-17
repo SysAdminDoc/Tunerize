@@ -53,6 +53,7 @@ from app.core.runtime import find_polyphone_executable
 from app.core.soundfonts import SoundFontInfo, SoundFontLibrary
 from app.ui.browser_dialog import BrowserDialog
 from app.ui.sf2_creator_dialog import SF2CreatorDialog
+from app.ui.piano_roll_widget import PianoRollWidget
 from app.ui.waveform_widget import WaveformWidget
 
 
@@ -303,6 +304,9 @@ class MainWindow(QMainWindow):
         root.addWidget(self._advanced_section())
         root.addLayout(self._action_row())
         root.addLayout(self._progress_section())
+        self.piano_roll = PianoRollWidget()
+        self.piano_roll.setVisible(False)
+        root.addWidget(self.piano_roll)
         root.addWidget(self._log_section(), 1)
 
         scroll = QScrollArea()
@@ -1341,6 +1345,10 @@ class MainWindow(QMainWindow):
         self._log(f"WAV written: {wav_path}")
         if midi_path is not None:
             self._log(f"MIDI written: {midi_path}")
+            self.piano_roll.set_midi(Path(str(midi_path)))
+            self.piano_roll.setVisible(True)
+        else:
+            self.piano_roll.setVisible(False)
 
     @Slot(list, list)
     def _on_multi_done_ok(self, midi_paths: list, audio_paths: list) -> None:

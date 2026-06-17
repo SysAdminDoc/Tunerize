@@ -3,10 +3,20 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pytest
+import soundfile as sf
 
 from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES
-from app.core.pipeline import PipelineConfig, _chiptune_suffix
+from app.core.pipeline import ConversionPipeline, PipelineConfig, _chiptune_suffix
+
+
+def _basic_pitch_available() -> bool:
+    try:
+        from basic_pitch.inference import predict  # noqa: F401
+        return True
+    except ImportError:
+        return False
 
 
 def test_config_requires_sf2_path_when_not_chiptune(tmp_path):
@@ -122,3 +132,36 @@ def test_config_rejects_unknown_output_format(tmp_path):
             use_chiptune_engine=True,
             output_format="aiff",
         )
+
+
+@pytest.mark.skipif(
+    not _basic_pitch_available(),
+    reason="basic-pitch not installed",
+)
+def test_pipeline_end_to_end_chiptune(tmp_path):
+    """Full integration: generate a tone WAV, transcribe, render chiptune, verify output."""
+    sr = 22050
+    duration = 2.0
+    freq = 440.0
+    t = np.linspace(0, duration, int(sr * duration), dtype=np.float32)
+    tone = np.sin(2 * np.pi * freq * t) * 0.8
+    input_wav = tmp_path / "tone.wav"
+    sf.write(str(input_wav), tone, sr, subtype="PCM_16")
+
+    out_dir = tmp_path / "output"
+    config = PipelineConfig(
+        audio_path=input_wav,
+        output_dir=out_dir,
+        use_chiptune_engine=True,
+        chiptune_engine=ENGINE_NES,
+        export_midi=True,
+    )
+    pipeline = ConversionPipeline(config)
+    midi_out, wav_out = pipeline.run()
+
+    assert wav_out.exists()
+    audio, out_sr = sf.read(str(wav_out))
+    assert out_sr == 44100
+    assert len(audio) > 0
+    assert np.max(np.abs(audio)) > 0.01
+    assert midi_out is not None and midi_out.exists()
