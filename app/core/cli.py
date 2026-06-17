@@ -60,6 +60,20 @@ def _add_conversion_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--stem-separate", action="store_true", help="Run Demucs stem separation before transcription.")
     parser.add_argument("--no-midi", action="store_true", help="Delete the intermediate .mid file after rendering.")
     parser.add_argument(
+        "--onset-threshold",
+        type=float,
+        default=0.5,
+        metavar="T",
+        help="Basic Pitch onset detection threshold 0.0–1.0 (default: 0.5). Lower = more sensitive.",
+    )
+    parser.add_argument(
+        "--frame-threshold",
+        type=float,
+        default=0.3,
+        metavar="T",
+        help="Basic Pitch frame activation threshold 0.0–1.0 (default: 0.3). Lower = more notes detected.",
+    )
+    parser.add_argument(
         "--min-note-ms",
         type=int,
         default=58,
@@ -172,6 +186,8 @@ def _make_config(args, audio_path: Path, out_dir: Path, sf2_path: Path | None):
         sample_rate=args.sample_rate,
         chiptune_engine=_engine_key(args.engine),
         output_format=args.format,
+        onset_threshold=args.onset_threshold,
+        frame_threshold=args.frame_threshold,
     )
 
 

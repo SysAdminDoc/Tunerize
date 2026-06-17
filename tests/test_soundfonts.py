@@ -120,6 +120,17 @@ def test_soundfont_info_bank_count_single(fake_sf2):
     assert info.bank_count == 0
 
 
+def test_get_info_handles_oversized_riff_size(tmp_path):
+    """A malformed SF2 with riff_size=0xFFFFFFFF must not cause OOM or crash."""
+    huge_riff_size = 0xFFFFFFFF
+    payload = b"RIFF" + struct.pack("<I", huge_riff_size) + b"sfbk" + b"\x00" * 32
+    path = tmp_path / "oversized.sf2"
+    path.write_bytes(payload)
+    info = get_info(path)
+    assert info.is_valid
+    assert info.preset_count == 0
+
+
 def _write_sf2_with_presets(path: Path, *, sample_count: int = 0) -> Path:
     records = b"".join(
         [

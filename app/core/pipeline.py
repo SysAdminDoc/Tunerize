@@ -47,6 +47,8 @@ class PipelineConfig:
     chiptune_voice_mutes: tuple[bool, bool, bool, bool] = (False, False, False, False)
     chiptune_voice_solos: tuple[bool, bool, bool, bool] = (False, False, False, False)
     output_format: str = "wav"
+    onset_threshold: float = 0.5
+    frame_threshold: float = 0.3
 
     def __post_init__(self) -> None:
         if not self.use_chiptune_engine and self.sf2_path is None:
@@ -112,6 +114,8 @@ class ConversionPipeline:
         self._stage("Transcribing audio -> MIDI (Basic Pitch)...", 35)
         midi_data = transcriber.transcribe(
             audio_for_transcription,
+            onset_threshold=cfg.onset_threshold,
+            frame_threshold=cfg.frame_threshold,
             min_note_length_ms=cfg.min_note_ms,
         )
         self._log(f"  -> {midi_cleanup.note_count(midi_data)} raw notes")
@@ -276,6 +280,8 @@ class MultiChannelPipeline:
             try:
                 midi_data = transcriber.transcribe(
                     stem_audio,
+                    onset_threshold=cfg.onset_threshold,
+                    frame_threshold=cfg.frame_threshold,
                     min_note_length_ms=cfg.min_note_ms,
                 )
             except Exception as exc:

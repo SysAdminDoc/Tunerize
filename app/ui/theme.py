@@ -126,6 +126,20 @@ QScrollBar::handle:vertical:hover { background: #585b70; }
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; border: none; background: none; }
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
 
+QSlider::groove:horizontal {
+    background: #313244; border: none; border-radius: 3px; height: 6px;
+}
+QSlider::handle:horizontal {
+    background: #89b4fa; border: none; border-radius: 6px;
+    width: 12px; margin: -3px 0;
+}
+QSlider::handle:horizontal:hover { background: #b4d0fb; }
+QSlider::handle:horizontal:pressed { background: #74c7ec; }
+QSlider::sub-page:horizontal { background: #45475a; border-radius: 3px; }
+QSlider::add-page:horizontal { background: #313244; border-radius: 3px; }
+
+QLabel#styleHint { font-style: italic; color: #a6adc8; font-size: 9pt; }
+
 QMessageBox { background: #1e1e2e; }
 QMessageBox QLabel { color: #cdd6f4; }
 """

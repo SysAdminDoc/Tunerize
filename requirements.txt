@@ -13,11 +13,11 @@ mido>=1.3.0
 pretty_midi>=0.2.10
 
 # HTTP — used by the online SoundFont browser (musical-artifacts.com client)
-requests>=2.31
+requests>=2.32.4             # >=2.32.4 for CVE-2024-47081 .netrc credential leak fix
 
 # Audio → MIDI transcription (Spotify Basic Pitch)
 basic-pitch>=0.4.0
-onnxruntime>=1.16            # ONNX backend — avoids the 1GB+ TensorFlow tail
+onnxruntime>=1.18            # ONNX backend (>=1.18 for CVE-2024-5187 path traversal fix)
 
 # MIDI → SoundFont synthesis
 pyFluidSynth>=1.3.3          # requires libfluidsynth installed on PATH (see README)

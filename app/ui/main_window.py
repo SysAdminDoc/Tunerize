@@ -515,6 +515,34 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("Min note length:"), 4, 0)
         layout.addWidget(self.min_note_spin, 4, 1)
 
+        self.onset_slider = QSlider(Qt.Orientation.Horizontal)
+        self.onset_slider.setRange(0, 100)
+        self.onset_slider.setValue(50)
+        self.onset_slider.setToolTip("Basic Pitch onset detection threshold. Lower = more sensitive.")
+        self.onset_slider.setAccessibleName("Onset threshold")
+        self.onset_value_label = QLabel("0.50")
+        self.onset_value_label.setFixedWidth(36)
+        self.onset_slider.valueChanged.connect(lambda v: self.onset_value_label.setText(f"{v / 100:.2f}"))
+        layout.addWidget(QLabel("Onset threshold:"), 5, 0)
+        onset_row = QHBoxLayout()
+        onset_row.addWidget(self.onset_slider, 1)
+        onset_row.addWidget(self.onset_value_label)
+        layout.addLayout(onset_row, 5, 1)
+
+        self.frame_slider = QSlider(Qt.Orientation.Horizontal)
+        self.frame_slider.setRange(0, 100)
+        self.frame_slider.setValue(30)
+        self.frame_slider.setToolTip("Basic Pitch frame activation threshold. Lower = more notes.")
+        self.frame_slider.setAccessibleName("Frame threshold")
+        self.frame_value_label = QLabel("0.30")
+        self.frame_value_label.setFixedWidth(36)
+        self.frame_slider.valueChanged.connect(lambda v: self.frame_value_label.setText(f"{v / 100:.2f}"))
+        layout.addWidget(QLabel("Frame threshold:"), 6, 0)
+        frame_row = QHBoxLayout()
+        frame_row.addWidget(self.frame_slider, 1)
+        frame_row.addWidget(self.frame_value_label)
+        layout.addLayout(frame_row, 6, 1)
+
         engine_label = QLabel("Chip engine:")
         self.engine_combo = QComboBox()
         self.engine_combo.addItem("NES APU-style", ENGINE_NES)
@@ -523,13 +551,13 @@ class MainWindow(QMainWindow):
         self.engine_combo.addItem("Sega Genesis FM", ENGINE_SEGA)
         self.engine_combo.setToolTip("Choose the built-in chip model used by Chiptune mode.")
         self.engine_combo.currentIndexChanged.connect(lambda _idx: self._update_chiptune_engine_labels())
-        layout.addWidget(engine_label, 5, 0)
-        layout.addWidget(self.engine_combo, 5, 1)
+        layout.addWidget(engine_label, 7, 0)
+        layout.addWidget(self.engine_combo, 7, 1)
         self._chiptune_mixer_widgets.extend([engine_label, self.engine_combo])
 
         mixer_label = QLabel("Chiptune voice mixer:")
         mixer_label.setToolTip("Applies only to the built-in chiptune renderer.")
-        layout.addWidget(mixer_label, 6, 0, 1, 2)
+        layout.addWidget(mixer_label, 8, 0, 1, 2)
         self._chiptune_mixer_widgets.append(mixer_label)
 
         mixer_widget = QWidget()
@@ -578,7 +606,7 @@ class MainWindow(QMainWindow):
             self.voice_solo_checks.append(solo)
             self._chiptune_mixer_widgets.extend([name_label, volume, value_label, mute, solo])
 
-        layout.addWidget(mixer_widget, 7, 0, 1, 2)
+        layout.addWidget(mixer_widget, 9, 0, 1, 2)
         self._chiptune_mixer_widgets.append(mixer_widget)
         self._update_chiptune_engine_labels()
 
@@ -1075,6 +1103,8 @@ class MainWindow(QMainWindow):
                 chiptune_voice_volumes=voice_volumes,
                 chiptune_voice_mutes=voice_mutes,
                 chiptune_voice_solos=voice_solos,
+                onset_threshold=self.onset_slider.value() / 100.0,
+                frame_threshold=self.frame_slider.value() / 100.0,
             )
         except ValueError as exc:
             QMessageBox.warning(self, "Configuration error", str(exc))
