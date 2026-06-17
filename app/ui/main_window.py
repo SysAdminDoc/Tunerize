@@ -4,7 +4,7 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QUrl, Signal, Slot
+from PySide6.QtCore import QProcess, Qt, QThread, QUrl, Signal, Slot
 from PySide6.QtGui import QDragEnterEvent, QDragMoveEvent, QDropEvent
 
 try:
@@ -42,8 +42,10 @@ from app.core.genre_presets import GenrePreset, get_genre_presets
 from app.core.pipeline import ConversionPipeline, PipelineConfig
 from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
 from app.core.renderer import render_preview
+from app.core.runtime import find_polyphone_executable
 from app.core.soundfonts import SoundFontInfo, SoundFontLibrary
 from app.ui.browser_dialog import BrowserDialog
+from app.ui.sf2_creator_dialog import SF2CreatorDialog
 
 
 class _Worker(QThread):
@@ -179,6 +181,7 @@ class MainWindow(QMainWindow):
 
         self.library = SoundFontLibrary(soundfonts_dir or Path.cwd() / "soundfonts")
         self._settings_path = settings_path
+        self._polyphone_exe = find_polyphone_executable()
         self._worker: _Worker | None = None
         self._preview_worker: _PreviewWorker | None = None
         self._preview_player = QSoundEffect(self) if QSoundEffect is not None else None
@@ -354,6 +357,8 @@ class MainWindow(QMainWindow):
         self.sf_add_btn = QPushButton("Add…")
         self.sf_add_btn.setToolTip("Import a .sf2 file from disk into your library")
         self.sf_add_btn.clicked.connect(self._add_soundfont)
+        self.sf_edit_btn = QPushButton("Edit SoundFont…")
+        self.sf_edit_btn.clicked.connect(self._edit_current_soundfont)
         self.sf_fluids_btn = QPushButton("Get FluidR3 GM…")
         self.sf_fluids_btn.setToolTip(
             "Search for the free FluidR3 GM SoundFont in the online browser"
@@ -362,13 +367,18 @@ class MainWindow(QMainWindow):
         self.sf_browse_btn = QPushButton("Browse Online…")
         self.sf_browse_btn.setToolTip("Search and install SoundFonts from public libraries")
         self.sf_browse_btn.clicked.connect(self._open_browser)
+        self.sf_create_btn = QPushButton("Create SF2…")
+        self.sf_create_btn.setToolTip("Build a new SoundFont from WAV samples or export chiptune voices")
+        self.sf_create_btn.clicked.connect(self._open_sf2_creator)
 
         layout.addWidget(QLabel("SoundFont:"))
         layout.addWidget(self.sf_combo, 1)
         layout.addWidget(self.sf_refresh_btn)
         layout.addWidget(self.sf_add_btn)
+        layout.addWidget(self.sf_edit_btn)
         layout.addWidget(self.sf_fluids_btn)
         layout.addWidget(self.sf_browse_btn)
+        layout.addWidget(self.sf_create_btn)
         return self.sf_frame
 
     def _output_row(self) -> QHBoxLayout:
@@ -611,6 +621,42 @@ class MainWindow(QMainWindow):
         dlg.sf_installed.connect(self._on_browser_installed)
         dlg.exec()
 
+    def _open_sf2_creator(self) -> None:
+        dlg = SF2CreatorDialog(self.library.library_dir, parent=self)
+        dlg.sf2_created.connect(self._on_sf2_created)
+        dlg.exec()
+
+    def _on_sf2_created(self, path: str) -> None:
+        created = Path(path)
+        if created.parent == self.library.library_dir:
+            self._remember_soundfont(created, select=True)
+            if self.mode_chiptune.isChecked():
+                self.mode_sf2.setChecked(True)
+            self._log(f"Created SoundFont: {created.name}")
+        else:
+            self._log(f"SF2 saved: {created}")
+
+    def _edit_current_soundfont(self) -> None:
+        sf_data = self.sf_combo.currentData()
+        if not sf_data:
+            QMessageBox.warning(self, "Missing SoundFont", "Pick a SoundFont before opening the editor.")
+            return
+        if self._polyphone_exe is None:
+            QMessageBox.warning(
+                self,
+                "Polyphone unavailable",
+                "Polyphone is not bundled. Source runs can set TUNERIZE_POLYPHONE_EXE or TUNERIZE_POLYPHONE_DIR.",
+            )
+            return
+
+        sf_path = Path(sf_data)
+        started = QProcess.startDetached(str(self._polyphone_exe), [str(sf_path)], str(sf_path.parent))
+        ok = started[0] if isinstance(started, tuple) else started
+        if not ok:
+            QMessageBox.warning(self, "Editor failed", f"Could not launch Polyphone:\n{self._polyphone_exe}")
+            return
+        self._log(f"Opened in Polyphone: {sf_path.name}")
+
     def _on_browser_installed(self, path) -> None:
         installed = Path(path)
         self._remember_soundfont(installed, select=True)
@@ -834,7 +880,9 @@ class MainWindow(QMainWindow):
             self.demucs_check,
             self.sf_refresh_btn,
             self.sf_add_btn,
+            self.sf_edit_btn,
             self.sf_browse_btn,
+            self.sf_create_btn,
             self.transpose_spin,
             self.quantize_check,
             self.export_midi_check,
@@ -847,6 +895,14 @@ class MainWindow(QMainWindow):
         for widget in self._soundfont_preset_widgets:
             widget.setVisible(sf2_mode)
         self.sf_combo.setEnabled(enabled and self._has_soundfonts)
+        sf_selected = self.sf_combo.currentData() is not None
+        polyphone_available = self._polyphone_exe is not None
+        self.sf_edit_btn.setEnabled(enabled and self._has_soundfonts and sf_selected and polyphone_available)
+        self.sf_edit_btn.setToolTip(
+            "Open the selected SoundFont in bundled Polyphone."
+            if polyphone_available
+            else "Polyphone is not bundled; set TUNERIZE_POLYPHONE_EXE or TUNERIZE_POLYPHONE_DIR for source runs."
+        )
         self.quantize_combo.setEnabled(enabled and self.quantize_check.isChecked())
         self.force_preset_check.setEnabled(enabled and sf2_mode and self._has_soundfonts)
         preset_available = self.preset_combo.currentData() is not None
