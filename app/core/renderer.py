@@ -31,6 +31,7 @@ def render(
     forced_bank: int = 0,
     forced_preset: int = 0,
     cancel_check: Callable[[], bool] | None = None,
+    monitor_callback: Callable[[np.ndarray, int], None] | None = None,
 ) -> Path:
     """Render midi_path through sf2_path to output_wav_path (16-bit stereo WAV)."""
     ensure_bundled_runtime_paths()
@@ -63,6 +64,7 @@ def render(
 
         midi = mido.MidiFile(str(midi_path))
         chunks: list[np.ndarray] = []
+        _monitor_acc = 0
 
         for msg in midi:
             if cancel_check is not None and cancel_check():
@@ -71,7 +73,12 @@ def render(
             if msg.time > 0:
                 n_samples = int(msg.time * sample_rate)
                 if n_samples > 0:
-                    chunks.append(np.frombuffer(fs.get_samples(n_samples), dtype=np.int16))
+                    chunk = np.frombuffer(fs.get_samples(n_samples), dtype=np.int16)
+                    chunks.append(chunk)
+                    _monitor_acc += n_samples
+                    if monitor_callback is not None and _monitor_acc >= sample_rate:
+                        monitor_callback(chunk.reshape(-1, 2) if chunk.size % 2 == 0 else chunk[:-1].reshape(-1, 2), sample_rate)
+                        _monitor_acc = 0
 
             if msg.is_meta:
                 continue

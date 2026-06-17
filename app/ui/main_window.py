@@ -39,6 +39,7 @@ from app import __version__
 from app.core.audio_io import SUPPORTED_INPUT_EXTS
 from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
 from app.core.genre_presets import GenrePreset, get_genre_presets
+from app.core.monitor import AudioMonitor, is_monitoring_available
 from app.core.pipeline import ConversionPipeline, MultiChannelPipeline, PipelineConfig
 from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
 from app.core.renderer import render_preview
@@ -51,24 +52,28 @@ from app.ui.sf2_creator_dialog import SF2CreatorDialog
 class _Worker(QThread):
     progress = Signal(str, int)
     log = Signal(str)
+    monitor_chunk = Signal(object, int)  # (stereo_int16 ndarray, sample_rate)
     finished_ok = Signal(object, object)   # (midi_path | None, wav_path)
     finished_err = Signal(str)
 
-    def __init__(self, config: PipelineConfig):
+    def __init__(self, config: PipelineConfig, *, monitor: bool = False):
         super().__init__()
         self._config = config
         self._cancelled = False
+        self._monitor = monitor
 
     def cancel(self) -> None:
         self._cancelled = True
 
     def run(self) -> None:
         try:
+            monitor_cb = (lambda chunk, sr: self.monitor_chunk.emit(chunk, sr)) if self._monitor else None
             pipeline = ConversionPipeline(
                 self._config,
                 progress=lambda s, p: self.progress.emit(s, p),
                 log=lambda m: self.log.emit(m),
                 cancel_check=lambda: self._cancelled,
+                monitor_callback=monitor_cb,
             )
             midi_out, wav_out = pipeline.run()
             self.finished_ok.emit(midi_out, wav_out)
@@ -224,6 +229,7 @@ class MainWindow(QMainWindow):
         self._soundfont_preset_widgets: list[QWidget] = []
         self._batch_worker: _BatchWorker | None = None
         self._multi_worker: _MultiChannelWorker | None = None
+        self._audio_monitor: AudioMonitor | None = None
         self.voice_name_labels: list[QLabel] = []
         self.voice_volume_sliders: list[QSlider] = []
         self.voice_value_labels: list[QLabel] = []
@@ -271,6 +277,17 @@ class MainWindow(QMainWindow):
             "Split into vocals/drums/bass/other and render each stem independently."
         )
         root.addWidget(self.multi_channel_check)
+
+        self.monitor_check = QCheckBox("Monitor output — play audio through speakers during render")
+        self.monitor_check.setToolTip(
+            "Stream audio to your speakers in real time as the conversion runs."
+        )
+        self.monitor_check.setEnabled(is_monitoring_available())
+        if not is_monitoring_available():
+            self.monitor_check.setToolTip(
+                "Requires PySide6 multimedia module and an audio output device."
+            )
+        root.addWidget(self.monitor_check)
 
         root.addWidget(self._advanced_section())
         root.addLayout(self._action_row())
@@ -919,6 +936,7 @@ class MainWindow(QMainWindow):
             self.format_combo,
             self.demucs_check,
             self.multi_channel_check,
+            self.monitor_check,
             self.sf_refresh_btn,
             self.sf_add_btn,
             self.sf_edit_btn,
@@ -1070,6 +1088,13 @@ class MainWindow(QMainWindow):
             f"{mode_label} mode..."
         )
 
+        use_monitor = self.monitor_check.isChecked() and is_monitoring_available()
+        if use_monitor:
+            self._audio_monitor = AudioMonitor(sample_rate=config.sample_rate)
+            if not self._audio_monitor.start():
+                self._log("Audio monitor: could not open output device, continuing without.")
+                self._audio_monitor = None
+
         if multi_channel:
             self._multi_worker = _MultiChannelWorker(config)
             self._multi_worker.progress.connect(self._on_progress)
@@ -1078,9 +1103,11 @@ class MainWindow(QMainWindow):
             self._multi_worker.finished_err.connect(self._on_done_err)
             self._multi_worker.start()
         else:
-            self._worker = _Worker(config)
+            self._worker = _Worker(config, monitor=use_monitor)
             self._worker.progress.connect(self._on_progress)
             self._worker.log.connect(self._log)
+            if use_monitor:
+                self._worker.monitor_chunk.connect(self._on_monitor_chunk)
             self._worker.finished_ok.connect(self._on_done_ok)
             self._worker.finished_err.connect(self._on_done_err)
             self._worker.start()
@@ -1199,8 +1226,19 @@ class MainWindow(QMainWindow):
         self.stage_label.setText(stage)
         self.progress_bar.setValue(pct)
 
+    @Slot(object, int)
+    def _on_monitor_chunk(self, chunk, sample_rate: int) -> None:
+        if self._audio_monitor is not None and self._audio_monitor.active:
+            self._audio_monitor.write_chunk(chunk)
+
+    def _stop_monitor(self) -> None:
+        if self._audio_monitor is not None:
+            self._audio_monitor.stop()
+            self._audio_monitor = None
+
     @Slot(object, object)
     def _on_done_ok(self, midi_path, wav_path) -> None:
+        self._stop_monitor()
         self._set_busy(False)
         self.stage_label.setText("Done.")
         self.progress_bar.setValue(100)
@@ -1210,6 +1248,7 @@ class MainWindow(QMainWindow):
 
     @Slot(list, list)
     def _on_multi_done_ok(self, midi_paths: list, audio_paths: list) -> None:
+        self._stop_monitor()
         self._set_busy(False)
         self.progress_bar.setValue(100)
         count = len(audio_paths)
@@ -1222,6 +1261,7 @@ class MainWindow(QMainWindow):
 
     @Slot(str)
     def _on_done_err(self, err_msg: str) -> None:
+        self._stop_monitor()
         self._set_busy(False)
         if "cancelled" in err_msg.lower():
             self.stage_label.setText("Cancelled.")

@@ -8,9 +8,12 @@ from pathlib import Path
 
 from app.core import audio_io, chiptune, midi_cleanup, renderer, transcriber
 
+import numpy as np
+
 ProgressCallback = Callable[[str, int], None]
 LogCallback = Callable[[str], None]
 CancelCheck = Callable[[], bool]
+MonitorCallback = Callable[[np.ndarray, int], None]
 
 
 class PipelineError(Exception):
@@ -72,11 +75,13 @@ class ConversionPipeline:
         progress: ProgressCallback | None = None,
         log: LogCallback | None = None,
         cancel_check: CancelCheck | None = None,
+        monitor_callback: MonitorCallback | None = None,
     ):
         self.config = config
         self._progress = progress or (lambda _s, _p: None)
         self._log = log or (lambda _m: None)
         self._cancel_check = cancel_check or (lambda: False)
+        self._monitor_callback = monitor_callback
 
     def _check_cancel(self) -> None:
         if self._cancel_check():
@@ -135,6 +140,7 @@ class ConversionPipeline:
                 voice_solos=cfg.chiptune_voice_solos,
                 cancel_check=self._cancel_check,
                 log=self._log,
+                monitor_callback=self._monitor_callback,
             )
         else:
             self._stage(f"Rendering through {cfg.sf2_path.name}...", 75)  # type: ignore[union-attr]
@@ -149,6 +155,7 @@ class ConversionPipeline:
                 forced_bank=cfg.forced_bank,
                 forced_preset=cfg.forced_preset,
                 cancel_check=self._cancel_check,
+                monitor_callback=self._monitor_callback,
             )
 
         final_out = wav_out

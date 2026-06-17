@@ -619,6 +619,7 @@ def render(
     voice_solos: Sequence[bool] | None = None,
     cancel_check: Callable[[], bool] | None = None,
     log: Callable[[str], None] | None = None,
+    monitor_callback: Callable[[np.ndarray, int], None] | None = None,
 ) -> Path:
     """Render a MIDI through the chiptune engine to a 16-bit stereo WAV.
 
@@ -664,6 +665,8 @@ def render(
             engine=engine,
             gain_multiplier=voice_gains[v_idx],
         )
+        if monitor_callback is not None:
+            _emit_monitor_chunk(mix, sample_rate, monitor_callback)
 
     if engine == ENGINE_SNES:
         mix = _apply_snes_gaussian(mix)
@@ -680,4 +683,22 @@ def render(
     out_int16 = (stereo * 32767.0).astype(np.int16)
     output_wav_path.parent.mkdir(parents=True, exist_ok=True)
     sf.write(str(output_wav_path), out_int16, sample_rate, subtype="PCM_16")
+
+    if monitor_callback is not None:
+        _emit_monitor_chunk(mix, sample_rate, monitor_callback)
+
     return output_wav_path
+
+
+def _emit_monitor_chunk(
+    mix: np.ndarray,
+    sample_rate: int,
+    callback: Callable[[np.ndarray, int], None],
+) -> None:
+    """Send a normalized stereo int16 chunk to the monitor callback."""
+    peak = float(np.max(np.abs(mix))) or 1.0
+    normalized = mix / peak * 0.7
+    chunk_size = min(len(normalized), sample_rate * 2)
+    mono_chunk = normalized[:chunk_size]
+    stereo_chunk = np.column_stack([mono_chunk, mono_chunk])
+    callback((stereo_chunk * 32767).astype(np.int16), sample_rate)
