@@ -8,6 +8,7 @@ import numpy as np
 import soundfile as sf_lib
 
 from PySide6.QtCore import Qt, QUrl, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 
 try:
     from PySide6.QtMultimedia import QSoundEffect
@@ -36,6 +37,61 @@ from PySide6.QtWidgets import (
 from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
 from app.core.chiptune_sf2 import export_chiptune_sf2
 from app.core.sf2_writer import SF2Bank, SF2Preset, SF2Sample, SF2Zone, write_sf2
+
+
+class _SampleWaveform(QWidget):
+    """Inline waveform display for a sample's int16 data."""
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setMinimumHeight(50)
+        self.setMaximumHeight(70)
+        self._peaks: np.ndarray | None = None
+        self._loop_start_pct = 0.0
+        self._loop_end_pct = 1.0
+        self._loop_enabled = False
+
+    def set_sample(self, data: np.ndarray, loop_start: int, loop_end: int, loop_enabled: bool) -> None:
+        n = len(data)
+        self._loop_enabled = loop_enabled
+        self._loop_start_pct = loop_start / max(n, 1)
+        self._loop_end_pct = loop_end / max(n, 1) if loop_end > 0 else 1.0
+        w = max(self.width(), 1)
+        chunk = max(1, n // w)
+        if n == 0:
+            self._peaks = None
+        else:
+            trimmed = np.abs(data[:chunk * w].astype(np.float32)).reshape(-1, chunk)
+            self._peaks = np.max(trimmed, axis=1)
+        self.update()
+
+    def clear(self) -> None:
+        self._peaks = None
+        self.update()
+
+    def paintEvent(self, event) -> None:
+        super().paintEvent(event)
+        if self._peaks is None:
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        mid = h // 2
+        peak_max = float(np.max(self._peaks)) or 1.0
+        pen = QPen(QColor("#89b4fa"), 1)
+        painter.setPen(pen)
+        for x in range(min(len(self._peaks), w)):
+            amp = self._peaks[x] / peak_max
+            bar = max(1, int(amp * mid))
+            painter.drawLine(x, mid - bar, x, mid + bar)
+        if self._loop_enabled:
+            loop_pen = QPen(QColor("#a6e3a1"), 1)
+            painter.setPen(loop_pen)
+            ls = int(self._loop_start_pct * w)
+            le = int(self._loop_end_pct * w)
+            painter.drawLine(ls, 0, ls, h)
+            painter.drawLine(le, 0, le, h)
+        painter.end()
 
 
 class _SampleEntry:
@@ -242,6 +298,9 @@ class SF2CreatorDialog(QDialog):
         adsr_layout.addWidget(self._release_spin)
 
         right_layout.addWidget(adsr_group)
+
+        self._sample_waveform = _SampleWaveform()
+        right_layout.addWidget(self._sample_waveform)
         right_layout.addStretch(1)
 
         splitter.addWidget(right)
@@ -353,6 +412,7 @@ class SF2CreatorDialog(QDialog):
         self._decay_spin.setValue(s.decay_ms)
         self._sustain_spin.setValue(s.sustain_pct)
         self._release_spin.setValue(s.release_ms)
+        self._sample_waveform.set_sample(s.data, s.loop_start, s.loop_end, s.loop_enabled)
         self._updating = False
 
     def _on_prop_changed(self) -> None:
@@ -374,6 +434,7 @@ class SF2CreatorDialog(QDialog):
         s.sustain_pct = self._sustain_spin.value()
         s.release_ms = self._release_spin.value()
         self._check_key_overlaps()
+        self._sample_waveform.set_sample(s.data, s.loop_start, s.loop_end, s.loop_enabled)
 
         item = self._sample_list.item(row)
         if item is not None:
