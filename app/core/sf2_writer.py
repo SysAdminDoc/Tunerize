@@ -167,16 +167,24 @@ def _sustain_cb(pct: float) -> int:
     return max(0, min(1440, int(round(pct * 10))))
 
 
-def write_sf2(bank: SF2Bank, output_path: Path) -> Path:
-    """Write an SF2Bank to a .sf2 file. Returns the output path."""
+def write_sf2(bank: SF2Bank, output_path: Path, *, compressed: bool = False) -> Path:
+    """Write an SF2Bank to a .sf2 or .sf3 file. Returns the output path.
+
+    When *compressed* is True, sample data is Vorbis-compressed (SF3 format).
+    """
     if not bank.samples:
         raise SF2WriteError("Cannot write an SF2 with no samples.")
     if not bank.presets:
         raise SF2WriteError("Cannot write an SF2 with no presets.")
 
-    info_chunk = _build_info(bank.name)
-    sdta_chunk = _build_sdta(bank.samples)
-    pdta_chunk = _build_pdta(bank)
+    if compressed:
+        info_chunk = _build_info(bank.name, sf3=True)
+        sdta_chunk, compressed_offsets = _build_sdta_compressed(bank.samples)
+        pdta_chunk = _build_pdta(bank, compressed_offsets=compressed_offsets)
+    else:
+        info_chunk = _build_info(bank.name)
+        sdta_chunk = _build_sdta(bank.samples)
+        pdta_chunk = _build_pdta(bank)
 
     sfbk_body = info_chunk + sdta_chunk + pdta_chunk
     riff = b"RIFF" + struct.pack("<I", len(sfbk_body) + 4) + b"sfbk" + sfbk_body
@@ -197,8 +205,9 @@ def _list_chunk(list_type: bytes, *sub_chunks: bytes) -> bytes:
     return b"LIST" + struct.pack("<I", len(body)) + body
 
 
-def _build_info(name: str) -> bytes:
-    ifil = _chunk(b"ifil", struct.pack("<HH", 2, 1))  # SF2 version 2.01
+def _build_info(name: str, *, sf3: bool = False) -> bytes:
+    version = struct.pack("<HH", 3, 1) if sf3 else struct.pack("<HH", 2, 1)
+    ifil = _chunk(b"ifil", version)
     isng = _chunk(b"isng", b"EMU8000\x00")
     inam = _chunk(b"INAM", name.encode("latin-1", errors="replace")[:255] + b"\x00")
     isft = _chunk(b"ISFT", b"Tunerize\x00")
@@ -214,32 +223,80 @@ def _build_sdta(samples: list[SF2Sample]) -> bytes:
     return _list_chunk(b"sdta", smpl)
 
 
-def _build_pdta(bank: SF2Bank) -> bytes:
+@dataclass
+class _CompressedSampleInfo:
+    offset: int
+    length: int
+    original_length: int
+    loop_start: int
+    loop_end: int
+
+
+def _build_sdta_compressed(samples: list[SF2Sample]) -> tuple[bytes, list[_CompressedSampleInfo]]:
+    """Build sdta with Vorbis-compressed sample data (SF3 format)."""
+    import io
+    compressed_parts: list[bytes] = []
+    infos: list[_CompressedSampleInfo] = []
+    offset = 0
+
+    for sample in samples:
+        buf = io.BytesIO()
+        float_data = sample.data.astype(np.float32) / 32768.0
+        sf.write(buf, float_data, sample.sample_rate, format="OGG", subtype="VORBIS")
+        compressed = buf.getvalue()
+
+        n = len(sample.data)
+        infos.append(_CompressedSampleInfo(
+            offset=offset,
+            length=len(compressed),
+            original_length=n,
+            loop_start=sample.loop_start,
+            loop_end=sample.loop_end if sample.loop_end > 0 else n - 1,
+        ))
+        compressed_parts.append(compressed)
+        offset += len(compressed)
+
+    smpl = _chunk(b"smpl", b"".join(compressed_parts))
+    return _list_chunk(b"sdta", smpl), infos
+
+
+def _build_pdta(bank: SF2Bank, *, compressed_offsets: list[_CompressedSampleInfo] | None = None) -> bytes:
     # We create one instrument per preset for simplicity:
     # preset -> preset_bag -> preset_gen(instrument) -> instrument -> inst_bag -> inst_gen(sample, key range, etc.)
 
     # --- shdr: sample headers ---
     shdr_records: list[bytes] = []
     sample_offset = 0
-    for sample in bank.samples:
+    for idx, sample in enumerate(bank.samples):
         n = len(sample.data)
         padded_name = sample.name.encode("latin-1", errors="replace")[:20].ljust(20, b"\x00")
 
-        loop_start = sample_offset + sample.loop_start
-        loop_end = sample_offset + (sample.loop_end if sample.loop_end > 0 else n - 1)
+        if compressed_offsets is not None:
+            ci = compressed_offsets[idx]
+            s_start = ci.offset
+            s_end = ci.offset + ci.length
+            s_loop_start = ci.loop_start
+            s_loop_end = ci.loop_end
+            sample_type = SAMPLE_LINK_MONO | 0x10  # bit 4 = compressed
+        else:
+            s_start = sample_offset
+            s_end = sample_offset + n
+            s_loop_start = sample_offset + sample.loop_start
+            s_loop_end = sample_offset + (sample.loop_end if sample.loop_end > 0 else n - 1)
+            sample_type = SAMPLE_LINK_MONO
 
         shdr_records.append(struct.pack(
             "<20sIIIIIBbHH",
             padded_name,
-            sample_offset,           # start
-            sample_offset + n,       # end
-            loop_start,              # loop start
-            loop_end,                # loop end
+            s_start,
+            s_end,
+            s_loop_start,
+            s_loop_end,
             sample.sample_rate,
             sample.original_pitch,
             sample.pitch_correction,
             0,                       # sample link
-            SAMPLE_LINK_MONO,
+            sample_type,
         ))
         sample_offset += n + SAMPLE_PAD
 

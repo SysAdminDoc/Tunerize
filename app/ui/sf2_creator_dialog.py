@@ -511,14 +511,16 @@ class SF2CreatorDialog(QDialog):
 
         sf2_name = self._name_edit.text().strip() or "My SoundFont"
         default_path = self._library_dir / f"{sf2_name}.sf2"
-        path, _ = QFileDialog.getSaveFileName(
+        path, selected_filter = QFileDialog.getSaveFileName(
             self,
             "Save SoundFont",
             str(default_path),
-            "SoundFont (*.sf2);;All files (*)",
+            "SoundFont (*.sf2);;Compressed SoundFont (*.sf3);;All files (*)",
         )
         if not path:
             return
+
+        compressed = Path(path).suffix.lower() == ".sf3" or "sf3" in selected_filter.lower()
 
         try:
             sf2_bank = SF2Bank(name=sf2_name)
@@ -552,7 +554,7 @@ class SF2CreatorDialog(QDialog):
                 zones=zones,
             ))
 
-            result = write_sf2(sf2_bank, Path(path))
+            result = write_sf2(sf2_bank, Path(path), compressed=compressed)
             self.sf2_created.emit(str(result))
             QMessageBox.information(
                 self,

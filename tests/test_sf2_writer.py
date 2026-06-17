@@ -189,6 +189,53 @@ class TestModulators:
         assert validate_sf2(result)[0]
 
 
+class TestSF3Compressed:
+    def test_sf3_produces_valid_riff(self, tmp_path: Path) -> None:
+        out = tmp_path / "test.sf3"
+        bank = SF2Bank(name="SF3Test")
+        idx = bank.add_sample(SF2Sample(name="Tone", data=_sine_sample()))
+        bank.add_preset(SF2Preset(name="P", zones=[SF2Zone(sample_index=idx)]))
+        result = write_sf2(bank, out, compressed=True)
+        assert result.exists()
+        valid, err = validate_sf2(result)
+        assert valid, f"Invalid SF3: {err}"
+
+    def test_sf3_smaller_than_sf2(self, tmp_path: Path) -> None:
+        bank = SF2Bank(name="SizeTest")
+        idx = bank.add_sample(SF2Sample(name="Long", data=_sine_sample(duration_s=2.0)))
+        bank.add_preset(SF2Preset(name="P", zones=[SF2Zone(sample_index=idx)]))
+        sf2_path = write_sf2(bank, tmp_path / "test.sf2", compressed=False)
+        sf3_path = write_sf2(bank, tmp_path / "test.sf3", compressed=True)
+        assert sf3_path.stat().st_size < sf2_path.stat().st_size
+
+    def test_sf3_version_header(self, tmp_path: Path) -> None:
+        import struct as st
+        out = tmp_path / "ver.sf3"
+        bank = SF2Bank(name="V")
+        idx = bank.add_sample(SF2Sample(name="S", data=_sine_sample()))
+        bank.add_preset(SF2Preset(name="P", zones=[SF2Zone(sample_index=idx)]))
+        write_sf2(bank, out, compressed=True)
+        with open(out, "rb") as f:
+            f.read(12)  # RIFF header
+            while True:
+                cid = f.read(4)
+                if len(cid) < 4:
+                    break
+                csz = st.unpack("<I", f.read(4))[0]
+                if cid == b"LIST":
+                    lt = f.read(4)
+                    if lt == b"INFO":
+                        ifil_id = f.read(4)
+                        ifil_sz = st.unpack("<I", f.read(4))[0]
+                        major, minor = st.unpack("<HH", f.read(4))
+                        assert major == 3 and minor == 1
+                        return
+                    f.seek(f.tell() + csz - 4)
+                else:
+                    f.seek(f.tell() + csz)
+        pytest.fail("ifil chunk not found")
+
+
 class TestTimecentsAndSustain:
     def test_timecents_instant(self) -> None:
         assert _timecents(0) == -32768
