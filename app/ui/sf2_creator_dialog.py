@@ -34,7 +34,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
+from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SID, ENGINE_SNES
 from app.core.chiptune_sf2 import export_chiptune_sf2
 from app.core.sf2_writer import SF2Bank, SF2Preset, SF2Sample, SF2Zone, write_sf2
 
@@ -315,6 +315,7 @@ class SF2CreatorDialog(QDialog):
         self._chip_combo.addItem("Game Boy DMG voices", ENGINE_GAME_BOY)
         self._chip_combo.addItem("SNES SPC700 voices", ENGINE_SNES)
         self._chip_combo.addItem("Sega Genesis FM voices", ENGINE_SEGA)
+        self._chip_combo.addItem("C64 SID voices", ENGINE_SID)
         chip_row.addWidget(self._chip_combo)
         self._chip_export_btn = QPushButton("Export Chiptune as SF2…")
         self._chip_export_btn.clicked.connect(self._export_chiptune)

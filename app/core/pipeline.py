@@ -138,6 +138,7 @@ class ConversionPipeline:
                 chiptune.ENGINE_GAME_BOY: "Game Boy DMG",
                 chiptune.ENGINE_SNES: "SNES SPC700",
                 chiptune.ENGINE_SEGA: "Sega Genesis YM2612",
+                chiptune.ENGINE_SID: "C64 SID",
             }
             engine_label = engine_labels.get(cfg.chiptune_engine, cfg.chiptune_engine)
             self._stage(f"Rendering chiptune ({engine_label} synth)...", 75)

@@ -87,7 +87,7 @@ def test_render_gameboy_engine_produces_nonsilent_wav(tmp_path, synthetic_midi):
 
 def test_render_rejects_unknown_engine(tmp_path, synthetic_midi):
     with pytest.raises(ChiptuneError, match="Unsupported chiptune engine"):
-        render(synthetic_midi, tmp_path / "bad.wav", engine="sid")
+        render(synthetic_midi, tmp_path / "bad.wav", engine="atari")
 
 
 def test_render_respects_cancel(tmp_path, synthetic_midi):
@@ -257,3 +257,27 @@ def test_assign_voices_sega_pitch_routing(synthetic_midi):
     # Any lead note should generally be above any bass note (not strict, but statistically true)
     if lead_pitches and bass_pitches:
         assert max(bass_pitches) < max(lead_pitches)
+
+
+def test_render_sid_produces_nonsilent_wav(tmp_path, synthetic_midi):
+    from app.core.chiptune import ENGINE_SID
+    out = tmp_path / "sid.wav"
+    render(synthetic_midi, out, engine=ENGINE_SID)
+    assert out.exists()
+    audio, sr = sf.read(str(out))
+    assert sr == 44100
+    assert audio.shape[1] == 2
+    assert np.max(np.abs(audio)) > 0.01
+
+
+def test_render_sid_differs_from_nes(tmp_path, synthetic_midi):
+    from app.core.chiptune import ENGINE_SID
+    out_nes = tmp_path / "nes.wav"
+    out_sid = tmp_path / "sid.wav"
+    render(synthetic_midi, out_nes)
+    render(synthetic_midi, out_sid, engine=ENGINE_SID)
+    nes_audio, _ = sf.read(str(out_nes))
+    sid_audio, _ = sf.read(str(out_sid))
+    min_len = min(len(nes_audio), len(sid_audio))
+    diff = np.max(np.abs(nes_audio[:min_len] - sid_audio[:min_len]))
+    assert diff > 0.01, "SID and NES renders should sound different"

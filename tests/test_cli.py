@@ -68,7 +68,7 @@ def test_parser_convert_all_flags():
 def test_parser_rejects_unknown_engine():
     parser = _build_parser()
     with pytest.raises(SystemExit):
-        parser.parse_args(["convert", "song.mp3", "--engine", "sid"])
+        parser.parse_args(["convert", "song.mp3", "--engine", "atari"])
 
 
 def test_parser_rejects_unknown_format():

@@ -21,7 +21,8 @@ ENGINE_NES = "nes"
 ENGINE_GAME_BOY = "gameboy"
 ENGINE_SNES = "snes"
 ENGINE_SEGA = "sega"
-SUPPORTED_ENGINES = (ENGINE_NES, ENGINE_GAME_BOY, ENGINE_SNES, ENGINE_SEGA)
+ENGINE_SID = "sid"
+SUPPORTED_ENGINES = (ENGINE_NES, ENGINE_GAME_BOY, ENGINE_SNES, ENGINE_SEGA, ENGINE_SID)
 
 V_PULSE_LEAD = 0
 V_PULSE_HARM = 1
@@ -145,6 +146,63 @@ def _wave_sega_bass(t: np.ndarray, freq: float) -> np.ndarray:
     out = np.sin(2.0 * np.pi * freq * t + 3.8 * mod).astype(np.float32)
     peak = float(np.max(np.abs(out))) or 1.0
     return out / peak
+
+
+# Commodore 64 SID: 3 voices with pulse, sawtooth, and noise.
+# The 6581 SID chip uses analog filters with characteristic resonance.
+
+def _sawtooth(t: np.ndarray, freq: float) -> np.ndarray:
+    phase = (t * freq) % 1.0
+    return (2.0 * phase - 1.0).astype(np.float32)
+
+
+def _wave_sid_pulse(t: np.ndarray, freq: float) -> np.ndarray:
+    """SID-style pulse wave with 40% duty cycle — the classic C64 lead sound."""
+    phase = (t * freq) % 1.0
+    return np.where(phase < 0.4, 1.0, -1.0).astype(np.float32)
+
+
+def _wave_sid_saw(t: np.ndarray, freq: float) -> np.ndarray:
+    """SID sawtooth — raw 12-bit DAC character with slight harmonic roll-off."""
+    raw = _sawtooth(t, freq)
+    return (raw * 0.92).astype(np.float32)
+
+
+def _wave_sid_bass(t: np.ndarray, freq: float) -> np.ndarray:
+    """SID triangle with ring-mod overtone — the warm C64 bass tone."""
+    phase = (t * freq) % 1.0
+    tri = (2.0 * np.abs(2.0 * phase - 1.0) - 1.0)
+    ring = np.sin(4.0 * np.pi * freq * t) * 0.15
+    out = (tri + ring).astype(np.float32)
+    peak = float(np.max(np.abs(out))) or 1.0
+    return out / peak
+
+
+def _env_sid_lead(n: int, sr: int) -> np.ndarray:
+    return _adsr(n, sr, attack_ms=2.0, decay_ms=40.0, sustain=0.55, release_ms=90.0)
+
+
+def _env_sid_harm(n: int, sr: int) -> np.ndarray:
+    return _adsr(n, sr, attack_ms=5.0, decay_ms=80.0, sustain=0.48, release_ms=120.0)
+
+
+def _env_sid_bass(n: int, sr: int) -> np.ndarray:
+    return _adsr(n, sr, attack_ms=1.0, decay_ms=20.0, sustain=0.72, release_ms=50.0)
+
+
+def _apply_sid_filter(mix: np.ndarray, sample_rate: int) -> np.ndarray:
+    """Approximate the SID 6581's resonant low-pass filter characteristic."""
+    cutoff_hz = 4800
+    rc = 1.0 / (2.0 * np.pi * cutoff_hz)
+    dt = 1.0 / sample_rate
+    alpha = dt / (rc + dt)
+    out = np.empty_like(mix)
+    out[0] = mix[0] * alpha
+    for i in range(1, len(mix)):
+        out[i] = out[i - 1] + alpha * (mix[i] - out[i - 1])
+    resonance = 0.25
+    out += resonance * (mix - out)
+    return out.astype(np.float32)
 
 
 def _square(t: np.ndarray, freq: float, duty: float) -> np.ndarray:
@@ -285,6 +343,13 @@ def _voice_label(idx: int, engine: str = ENGINE_NES) -> str:
             "FM Ch1-3 (lead)",
             "FM Ch4-5 (harmony)",
             "FM Ch6 (bass)",
+            "Noise (drums)",
+        )[idx]
+    if engine == ENGINE_SID:
+        return (
+            "SID Voice 1 (pulse lead)",
+            "SID Voice 2 (saw harmony)",
+            "SID Voice 3 (tri+ring bass)",
             "Noise (drums)",
         )[idx]
     return (
@@ -597,6 +662,15 @@ def _voice_patch(engine: str, voice_idx: int):
             return _wave_sega_bass, _env_sega_bass, BASE_VOICE_GAINS[voice_idx]
         return None, _env_drum, BASE_VOICE_GAINS[voice_idx]
 
+    if engine == ENGINE_SID:
+        if voice_idx == V_PULSE_LEAD:
+            return _wave_sid_pulse, _env_sid_lead, BASE_VOICE_GAINS[voice_idx]
+        if voice_idx == V_PULSE_HARM:
+            return _wave_sid_saw, _env_sid_harm, BASE_VOICE_GAINS[voice_idx]
+        if voice_idx == V_TRIANGLE:
+            return _wave_sid_bass, _env_sid_bass, BASE_VOICE_GAINS[voice_idx]
+        return None, _env_drum, BASE_VOICE_GAINS[voice_idx]
+
     if voice_idx == V_PULSE_LEAD:
         return _wave_pulse_lead, _env_pulse, BASE_VOICE_GAINS[voice_idx]
     if voice_idx == V_PULSE_HARM:
@@ -642,6 +716,9 @@ def render(
     elif engine == ENGINE_SEGA:
         voices = _assign_voices_sega(midi)
         engine_label = "Sega Genesis YM2612"
+    elif engine == ENGINE_SID:
+        voices = _assign_voices(midi)
+        engine_label = "C64 SID"
     else:
         voices = _assign_voices(midi)
         engine_label = "Game Boy DMG" if engine == ENGINE_GAME_BOY else "NES"
@@ -673,6 +750,8 @@ def render(
         mix = _apply_snes_echo(mix, sample_rate)
     elif engine == ENGINE_SEGA:
         mix = _apply_sega_clip(mix)
+    elif engine == ENGINE_SID:
+        mix = _apply_sid_filter(mix, sample_rate)
 
     peak = float(np.max(np.abs(mix)))
     if peak <= 0.0:

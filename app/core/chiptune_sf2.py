@@ -13,6 +13,7 @@ from app.core.chiptune import (
     ENGINE_GAME_BOY,
     ENGINE_NES,
     ENGINE_SEGA,
+    ENGINE_SID,
     ENGINE_SNES,
     SAMPLE_RATE,
     _noise,
@@ -24,6 +25,9 @@ from app.core.chiptune import (
     _wave_sega_bass,
     _wave_sega_harm,
     _wave_sega_lead,
+    _wave_sid_bass,
+    _wave_sid_pulse,
+    _wave_sid_saw,
     _wave_snes_bass,
     _wave_snes_harm,
     _wave_snes_lead,
@@ -59,6 +63,12 @@ _ENGINE_VOICES: dict[str, list[tuple[str, object, bool]]] = {
         ("Sega FM Harmony", _wave_sega_harm, False),
         ("Sega FM Bass", _wave_sega_bass, False),
         ("Sega Noise", None, True),
+    ],
+    ENGINE_SID: [
+        ("SID Pulse", _wave_sid_pulse, False),
+        ("SID Sawtooth", _wave_sid_saw, False),
+        ("SID Tri+Ring", _wave_sid_bass, False),
+        ("SID Noise", None, True),
     ],
 }
 

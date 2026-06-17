@@ -25,7 +25,7 @@ def _add_conversion_args(parser: argparse.ArgumentParser) -> None:
     )
     parser.add_argument(
         "--engine",
-        choices=["nes", "gameboy", "snes", "sega"],
+        choices=["nes", "gameboy", "snes", "sega", "sid"],
         default="nes",
         metavar="ENGINE",
         help="Chiptune engine: nes (default), gameboy, snes, sega. Ignored when --sf2 is given.",
@@ -160,13 +160,14 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _engine_key(name: str) -> str:
-    from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
+    from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SID, ENGINE_SNES
 
     return {
         "nes": ENGINE_NES,
         "gameboy": ENGINE_GAME_BOY,
         "snes": ENGINE_SNES,
         "sega": ENGINE_SEGA,
+        "sid": ENGINE_SID,
     }[name]
 
 

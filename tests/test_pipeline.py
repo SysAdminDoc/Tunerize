@@ -90,7 +90,7 @@ def test_config_rejects_unknown_chiptune_engine(tmp_path):
             audio_path=tmp_path / "in.mp3",
             output_dir=tmp_path / "out",
             use_chiptune_engine=True,
-            chiptune_engine="sid",
+            chiptune_engine="atari",
         )
 
 
