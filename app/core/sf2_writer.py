@@ -32,6 +32,18 @@ GEN_SAMPLE_MODES = 54
 GEN_OVERRIDING_ROOT_KEY = 58
 GEN_INSTRUMENT = 41
 
+# Modulator source indices (SF2 spec §8.2)
+MOD_SRC_NONE = 0
+MOD_SRC_NOTE_ON_VEL = 2
+MOD_SRC_NOTE_ON_KEY = 3
+MOD_SRC_CC = 0x0080  # OR with CC number
+
+# Modulator source types (bits 10-15 of source enum)
+MOD_TYPE_LINEAR = 0
+MOD_TYPE_CONCAVE = 1
+MOD_TYPE_CONVEX = 2
+MOD_TYPE_SWITCH = 3
+
 SAMPLE_LINK_MONO = 1
 SAMPLE_LOOP_CONTINUOUSLY = 1
 SAMPLE_NO_LOOP = 0
@@ -69,6 +81,16 @@ class SF2Sample:
 
 
 @dataclass
+class SF2Modulator:
+    """SF2 modulator record: source → amount → destination."""
+    src: int = MOD_SRC_NONE
+    dest: int = 0
+    amount: int = 0
+    amt_src: int = MOD_SRC_NONE
+    transform: int = 0  # 0 = linear
+
+
+@dataclass
 class SF2Zone:
     sample_index: int
     key_lo: int = 0
@@ -81,6 +103,7 @@ class SF2Zone:
     sustain_pct: float = 100.0  # 0-100, where 0 = full sustain, 100 = silent
     release_ms: float = 0.0
     loop_mode: int = -1  # -1 = auto from sample
+    modulators: list[SF2Modulator] = field(default_factory=list)
 
 
 @dataclass
@@ -232,16 +255,18 @@ def _build_pdta(bank: SF2Bank) -> bytes:
     inst_records: list[bytes] = []
     ibag_records: list[bytes] = []
     igen_records: list[bytes] = []
+    imod_records: list[bytes] = []
 
     ibag_idx = 0
     igen_idx = 0
+    imod_idx = 0
 
     for preset in bank.presets:
         inst_name = preset.name.encode("latin-1", errors="replace")[:20].ljust(20, b"\x00")
         inst_records.append(struct.pack("<20sH", inst_name, ibag_idx))
 
         for zone in preset.zones:
-            ibag_records.append(struct.pack("<HH", igen_idx, 0))
+            ibag_records.append(struct.pack("<HH", igen_idx, imod_idx))
 
             # key range
             igen_records.append(struct.pack("<HBB", GEN_KEY_RANGE, zone.key_lo, zone.key_hi))
@@ -283,16 +308,21 @@ def _build_pdta(bank: SF2Bank) -> bytes:
             igen_records.append(struct.pack("<HH", GEN_SAMPLE_ID, zone.sample_index))
             igen_idx += 1
 
+            for mod in zone.modulators:
+                imod_records.append(struct.pack("<HHhHH", mod.src, mod.dest, mod.amount, mod.amt_src, mod.transform))
+                imod_idx += 1
+
             ibag_idx += 1
 
     # Instrument EOS
     inst_records.append(struct.pack("<20sH", b"EOI\x00" + b"\x00" * 16, ibag_idx))
-    ibag_records.append(struct.pack("<HH", igen_idx, 0))
+    ibag_records.append(struct.pack("<HH", igen_idx, imod_idx))
     igen_records.append(struct.pack("<Hh", 0, 0))
+    imod_records.append(struct.pack("<HHhHH", 0, 0, 0, 0, 0))
 
     inst = _chunk(b"inst", b"".join(inst_records))
     ibag = _chunk(b"ibag", b"".join(ibag_records))
-    imod = _chunk(b"imod", struct.pack("<HHhHH", 0, 0, 0, 0, 0))
+    imod = _chunk(b"imod", b"".join(imod_records))
     igen = _chunk(b"igen", b"".join(igen_records))
 
     # --- phdr + pbag + pgen: preset headers ---

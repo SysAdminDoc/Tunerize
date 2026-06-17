@@ -41,12 +41,19 @@ from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_S
 from app.core.genre_presets import GenrePreset, get_genre_presets
 from app.core.monitor import AudioMonitor, is_monitoring_available
 from app.core.pipeline import ConversionPipeline, MultiChannelPipeline, PipelineConfig
-from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
+from app.core.recent_soundfonts import (
+    load_recent_soundfonts,
+    load_window_settings,
+    normalize_path_key,
+    remember_soundfont,
+    save_window_settings,
+)
 from app.core.renderer import render_preview
 from app.core.runtime import find_polyphone_executable
 from app.core.soundfonts import SoundFontInfo, SoundFontLibrary
 from app.ui.browser_dialog import BrowserDialog
 from app.ui.sf2_creator_dialog import SF2CreatorDialog
+from app.ui.waveform_widget import WaveformWidget
 
 
 class _Worker(QThread):
@@ -240,6 +247,7 @@ class MainWindow(QMainWindow):
         self._build_ui()
         self._refresh_soundfonts()
         self._update_mode_visibility()
+        self._restore_settings()
 
     # ---------- UI construction ----------
 
@@ -259,6 +267,9 @@ class MainWindow(QMainWindow):
         root.addLayout(self._style_preset_row())
         root.addWidget(self._mode_section())
         root.addLayout(self._input_row())
+        self.waveform = WaveformWidget()
+        self.waveform.setVisible(False)
+        root.addWidget(self.waveform)
         root.addWidget(self._soundfont_frame())
         self.sf_meta_label = QLabel()
         self.sf_meta_label.setObjectName("sfMeta")
@@ -940,6 +951,8 @@ class MainWindow(QMainWindow):
         self.stage_label.setText(f"Ready: {path.name}")
         if announce:
             self._log(f"Audio selected: {path}")
+        self.waveform.setVisible(True)
+        self.waveform.load_file(path)
 
     def _remember_soundfont(self, path: Path, *, select: bool = False) -> None:
         try:
@@ -1346,3 +1359,64 @@ class MainWindow(QMainWindow):
             names = ("Pulse 1 lead", "Pulse 2 harmony", "Triangle bass", "Noise drums")
         for label, name in zip(self.voice_name_labels, names, strict=True):
             label.setText(name)
+
+    # ---------- settings persistence ----------
+
+    def _restore_settings(self) -> None:
+        ws = load_window_settings(self._settings_path)
+        if not ws:
+            return
+        if "geometry" in ws:
+            from PySide6.QtCore import QByteArray
+            geo = QByteArray.fromBase64(ws["geometry"].encode("ascii"))
+            self.restoreGeometry(geo)
+        if ws.get("chiptune_mode") is True:
+            self.mode_chiptune.setChecked(True)
+        elif ws.get("chiptune_mode") is False:
+            self.mode_sf2.setChecked(True)
+        engine_data = ws.get("engine")
+        if engine_data:
+            idx = self.engine_combo.findData(engine_data)
+            if idx >= 0:
+                self.engine_combo.setCurrentIndex(idx)
+        fmt = ws.get("output_format")
+        if fmt:
+            idx = self.format_combo.findData(fmt)
+            if idx >= 0:
+                self.format_combo.setCurrentIndex(idx)
+        if "transpose" in ws:
+            self.transpose_spin.setValue(ws["transpose"])
+        if "quantize" in ws:
+            self.quantize_check.setChecked(ws["quantize"])
+        if "quantize_grid" in ws:
+            idx = self.quantize_combo.findText(ws["quantize_grid"])
+            if idx >= 0:
+                self.quantize_combo.setCurrentIndex(idx)
+        if "onset_threshold" in ws:
+            self.onset_slider.setValue(int(ws["onset_threshold"] * 100))
+        if "frame_threshold" in ws:
+            self.frame_slider.setValue(int(ws["frame_threshold"] * 100))
+        self._update_mode_visibility()
+        self._sync_control_state()
+
+    def _save_settings(self) -> None:
+        geo = self.saveGeometry().toBase64().data().decode("ascii")
+        ws = {
+            "geometry": geo,
+            "chiptune_mode": self.mode_chiptune.isChecked(),
+            "engine": self._selected_chiptune_engine(),
+            "output_format": self.format_combo.currentData(),
+            "transpose": self.transpose_spin.value(),
+            "quantize": self.quantize_check.isChecked(),
+            "quantize_grid": self.quantize_combo.currentText(),
+            "onset_threshold": self.onset_slider.value() / 100.0,
+            "frame_threshold": self.frame_slider.value() / 100.0,
+        }
+        try:
+            save_window_settings(ws, self._settings_path)
+        except (OSError, ValueError):
+            pass
+
+    def closeEvent(self, event) -> None:
+        self._save_settings()
+        super().closeEvent(event)

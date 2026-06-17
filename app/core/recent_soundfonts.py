@@ -90,6 +90,23 @@ def _read_settings(settings_path: Path | None = None) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
+def save_window_settings(
+    settings: dict[str, Any],
+    settings_path: Path | None = None,
+) -> None:
+    """Merge *settings* into the persisted settings file under the 'window' key."""
+    data = _read_settings(settings_path)
+    data["window"] = settings
+    _write_settings(data, settings_path)
+
+
+def load_window_settings(settings_path: Path | None = None) -> dict[str, Any]:
+    """Return the 'window' settings dict, or empty dict if missing."""
+    data = _read_settings(settings_path)
+    window = data.get("window")
+    return window if isinstance(window, dict) else {}
+
+
 def _write_settings(data: dict[str, Any], settings_path: Path | None = None) -> None:
     path = settings_path or SETTINGS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)

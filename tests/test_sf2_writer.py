@@ -8,7 +8,10 @@ import numpy as np
 import pytest
 
 from app.core.sf2_writer import (
+    GEN_ATTACK_VOL_ENV,
+    MOD_SRC_CC,
     SF2Bank,
+    SF2Modulator,
     SF2Preset,
     SF2Sample,
     SF2WriteError,
@@ -158,6 +161,32 @@ class TestSF2WriterEdgeCases:
         bank.add_preset(SF2Preset(name="P", zones=[SF2Zone(sample_index=idx)]))
         result = write_sf2(bank, deep)
         assert result.exists()
+
+
+class TestModulators:
+    def test_zone_with_modulators_produces_valid_sf2(self, tmp_sf2: Path) -> None:
+        bank = SF2Bank(name="ModTest")
+        idx = bank.add_sample(SF2Sample(name="S", data=_sine_sample()))
+        vibrato_mod = SF2Modulator(
+            src=MOD_SRC_CC | 1,  # CC#1 (mod wheel)
+            dest=GEN_ATTACK_VOL_ENV,
+            amount=100,
+        )
+        bank.add_preset(SF2Preset(name="P", zones=[
+            SF2Zone(sample_index=idx, modulators=[vibrato_mod]),
+        ]))
+        result = write_sf2(bank, tmp_sf2)
+        assert validate_sf2(result)[0]
+        assert result.stat().st_size > 100
+
+    def test_empty_modulators_still_valid(self, tmp_sf2: Path) -> None:
+        bank = SF2Bank(name="NoMod")
+        idx = bank.add_sample(SF2Sample(name="S", data=_sine_sample()))
+        bank.add_preset(SF2Preset(name="P", zones=[
+            SF2Zone(sample_index=idx, modulators=[]),
+        ]))
+        result = write_sf2(bank, tmp_sf2)
+        assert validate_sf2(result)[0]
 
 
 class TestTimecentsAndSustain:
