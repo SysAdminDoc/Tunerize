@@ -224,6 +224,15 @@ class ConversionPipeline:
         return out_path
 
 
+def compute_output_path(cfg: PipelineConfig) -> Path:
+    """Return the expected output audio path without running the pipeline."""
+    stem = cfg.audio_path.stem
+    suffix = _chiptune_suffix(cfg.chiptune_engine) if cfg.use_chiptune_engine else cfg.sf2_path.stem  # type: ignore[union-attr]
+    fmt = cfg.output_format.lower()
+    ext = f".{fmt}" if fmt != "wav" else ".wav"
+    return cfg.output_dir / f"{stem}__{suffix}{ext}"
+
+
 class MultiChannelPipeline:
     """Run per-stem conversion: Demucs split -> transcribe each -> render each."""
 

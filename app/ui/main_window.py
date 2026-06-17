@@ -40,7 +40,7 @@ from app.core.audio_io import SUPPORTED_INPUT_EXTS
 from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
 from app.core.genre_presets import GenrePreset, get_genre_presets
 from app.core.monitor import AudioMonitor, is_monitoring_available
-from app.core.pipeline import ConversionPipeline, MultiChannelPipeline, PipelineConfig
+from app.core.pipeline import ConversionPipeline, MultiChannelPipeline, PipelineConfig, compute_output_path
 from app.core.recent_soundfonts import (
     load_recent_soundfonts,
     load_window_settings,
@@ -1125,6 +1125,18 @@ class MainWindow(QMainWindow):
 
         if sf2_path is not None:
             self._remember_soundfont(sf2_path, select=True)
+
+        out_path = compute_output_path(config)
+        if out_path.exists():
+            reply = QMessageBox.question(
+                self,
+                "File exists",
+                f"{out_path.name} already exists.\n\nOverwrite?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No,
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
 
         self._set_busy(True)
         self.progress_bar.setValue(0)

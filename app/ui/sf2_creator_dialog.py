@@ -1,12 +1,18 @@
 """SF2 Creator dialog — build SoundFonts from WAV samples or chiptune voices."""
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
 
 import numpy as np
 import soundfile as sf_lib
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, QUrl, Signal
+
+try:
+    from PySide6.QtMultimedia import QSoundEffect
+except ImportError:
+    QSoundEffect = None
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -67,6 +73,10 @@ class SF2CreatorDialog(QDialog):
         self._library_dir = library_dir
         self._samples: list[_SampleEntry] = []
         self._updating = False
+        self._player = QSoundEffect(self) if QSoundEffect is not None else None
+        if self._player is not None:
+            self._player.setVolume(0.7)
+        self._preview_dir = Path(tempfile.gettempdir()) / "tunerize-sf2-preview"
         self._build_ui()
         self._sync_controls()
 
@@ -80,16 +90,19 @@ class SF2CreatorDialog(QDialog):
         top_row.addWidget(QLabel("SoundFont name:"))
         self._name_edit = QLineEdit("My SoundFont")
         self._name_edit.setMaxLength(255)
+        self._name_edit.setAccessibleName("SoundFont name")
         top_row.addWidget(self._name_edit, 1)
 
         top_row.addWidget(QLabel("Preset:"))
         self._preset_num_spin = QSpinBox()
         self._preset_num_spin.setRange(0, 127)
+        self._preset_num_spin.setAccessibleName("Preset number")
         top_row.addWidget(self._preset_num_spin)
 
         top_row.addWidget(QLabel("Bank:"))
         self._bank_spin = QSpinBox()
         self._bank_spin.setRange(0, 128)
+        self._bank_spin.setAccessibleName("Bank number")
         top_row.addWidget(self._bank_spin)
         root.addLayout(top_row)
 
@@ -102,6 +115,7 @@ class SF2CreatorDialog(QDialog):
         left_layout.setContentsMargins(0, 0, 0, 0)
         left_layout.addWidget(QLabel("Samples"))
         self._sample_list = QListWidget()
+        self._sample_list.setAccessibleName("Imported samples")
         self._sample_list.currentRowChanged.connect(self._on_sample_selected)
         left_layout.addWidget(self._sample_list, 1)
 
@@ -110,8 +124,13 @@ class SF2CreatorDialog(QDialog):
         self._add_btn.clicked.connect(self._add_samples)
         self._remove_btn = QPushButton("Remove")
         self._remove_btn.clicked.connect(self._remove_sample)
+        self._play_btn = QPushButton("Play")
+        self._play_btn.setToolTip("Audition the selected sample")
+        self._play_btn.clicked.connect(self._play_sample)
+        self._play_btn.setEnabled(QSoundEffect is not None)
         btn_row.addWidget(self._add_btn)
         btn_row.addWidget(self._remove_btn)
+        btn_row.addWidget(self._play_btn)
         left_layout.addLayout(btn_row)
         splitter.addWidget(left)
 
@@ -125,6 +144,7 @@ class SF2CreatorDialog(QDialog):
         name_row.addWidget(QLabel("Name:"))
         self._sample_name_edit = QLineEdit()
         self._sample_name_edit.setMaxLength(20)
+        self._sample_name_edit.setAccessibleName("Sample name")
         self._sample_name_edit.textChanged.connect(self._on_prop_changed)
         name_row.addWidget(self._sample_name_edit, 1)
         right_layout.addLayout(name_row)
@@ -136,18 +156,21 @@ class SF2CreatorDialog(QDialog):
         self._root_spin = QSpinBox()
         self._root_spin.setRange(0, 127)
         self._root_spin.setValue(60)
+        self._root_spin.setAccessibleName("Root key MIDI note")
         self._root_spin.valueChanged.connect(self._on_prop_changed)
         key_layout.addWidget(self._root_spin)
 
         key_layout.addWidget(QLabel("Range:"))
         self._key_lo_spin = QSpinBox()
         self._key_lo_spin.setRange(0, 127)
+        self._key_lo_spin.setAccessibleName("Key range low")
         self._key_lo_spin.valueChanged.connect(self._on_prop_changed)
         key_layout.addWidget(self._key_lo_spin)
         key_layout.addWidget(QLabel("–"))
         self._key_hi_spin = QSpinBox()
         self._key_hi_spin.setRange(0, 127)
         self._key_hi_spin.setValue(127)
+        self._key_hi_spin.setAccessibleName("Key range high")
         self._key_hi_spin.valueChanged.connect(self._on_prop_changed)
         key_layout.addWidget(self._key_hi_spin)
         right_layout.addWidget(key_group)
@@ -162,12 +185,14 @@ class SF2CreatorDialog(QDialog):
         loop_layout.addWidget(QLabel("Start:"))
         self._loop_start_spin = QSpinBox()
         self._loop_start_spin.setRange(0, 999999999)
+        self._loop_start_spin.setAccessibleName("Loop start sample")
         self._loop_start_spin.valueChanged.connect(self._on_prop_changed)
         loop_layout.addWidget(self._loop_start_spin)
 
         loop_layout.addWidget(QLabel("End:"))
         self._loop_end_spin = QSpinBox()
         self._loop_end_spin.setRange(0, 999999999)
+        self._loop_end_spin.setAccessibleName("Loop end sample")
         self._loop_end_spin.valueChanged.connect(self._on_prop_changed)
         loop_layout.addWidget(self._loop_end_spin)
 
@@ -184,6 +209,7 @@ class SF2CreatorDialog(QDialog):
         self._attack_spin.setRange(0, 10000)
         self._attack_spin.setValue(2.0)
         self._attack_spin.setSuffix(" ms")
+        self._attack_spin.setAccessibleName("Attack time")
         self._attack_spin.valueChanged.connect(self._on_prop_changed)
         adsr_layout.addWidget(self._attack_spin)
 
@@ -192,6 +218,7 @@ class SF2CreatorDialog(QDialog):
         self._decay_spin.setRange(0, 10000)
         self._decay_spin.setValue(20.0)
         self._decay_spin.setSuffix(" ms")
+        self._decay_spin.setAccessibleName("Decay time")
         self._decay_spin.valueChanged.connect(self._on_prop_changed)
         adsr_layout.addWidget(self._decay_spin)
 
@@ -200,6 +227,7 @@ class SF2CreatorDialog(QDialog):
         self._sustain_spin.setRange(0, 100)
         self._sustain_spin.setValue(25.0)
         self._sustain_spin.setSuffix(" %")
+        self._sustain_spin.setAccessibleName("Sustain level")
         self._sustain_spin.setToolTip("Sustain attenuation: 0% = full volume, 100% = silent")
         self._sustain_spin.valueChanged.connect(self._on_prop_changed)
         adsr_layout.addWidget(self._sustain_spin)
@@ -209,6 +237,7 @@ class SF2CreatorDialog(QDialog):
         self._release_spin.setRange(0, 10000)
         self._release_spin.setValue(40.0)
         self._release_spin.setSuffix(" ms")
+        self._release_spin.setAccessibleName("Release time")
         self._release_spin.valueChanged.connect(self._on_prop_changed)
         adsr_layout.addWidget(self._release_spin)
 
@@ -344,16 +373,55 @@ class SF2CreatorDialog(QDialog):
         s.decay_ms = self._decay_spin.value()
         s.sustain_pct = self._sustain_spin.value()
         s.release_ms = self._release_spin.value()
+        self._check_key_overlaps()
 
         item = self._sample_list.item(row)
         if item is not None:
             item.setText(s.name)
+
+    def _check_key_overlaps(self) -> None:
+        """Mark list items with a warning icon if their key ranges overlap."""
+        n = len(self._samples)
+        for i in range(n):
+            has_overlap = False
+            si = self._samples[i]
+            for j in range(n):
+                if i == j:
+                    continue
+                sj = self._samples[j]
+                if si.key_lo <= sj.key_hi and sj.key_lo <= si.key_hi:
+                    has_overlap = True
+                    break
+            item = self._sample_list.item(i)
+            if item is not None:
+                prefix = "⚠ " if has_overlap else ""
+                name = self._samples[i].name
+                if has_overlap:
+                    item.setToolTip("Key range overlaps with another sample")
+                else:
+                    item.setToolTip("")
+                item.setText(f"{prefix}{name}")
+
+    def _play_sample(self) -> None:
+        if self._player is None:
+            return
+        row = self._sample_list.currentRow()
+        if row < 0 or row >= len(self._samples):
+            return
+        entry = self._samples[row]
+        self._preview_dir.mkdir(parents=True, exist_ok=True)
+        preview_path = self._preview_dir / "preview.wav"
+        sf_lib.write(str(preview_path), entry.data, entry.sample_rate, subtype="PCM_16")
+        self._player.stop()
+        self._player.setSource(QUrl.fromLocalFile(str(preview_path)))
+        self._player.play()
 
     def _sync_controls(self) -> None:
         has_samples = len(self._samples) > 0
         selected = self._sample_list.currentRow() >= 0
 
         self._remove_btn.setEnabled(selected)
+        self._play_btn.setEnabled(selected and self._player is not None)
         self._export_btn.setEnabled(has_samples)
 
         for widget in (

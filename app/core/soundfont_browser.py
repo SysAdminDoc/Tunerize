@@ -163,6 +163,7 @@ class MusicalArtifactsProvider:
         path = self._cache_dir / f"{key}.json"
         with suppress(OSError):
             path.write_text(json.dumps(data), encoding="utf-8")
+        evict_stale_cache(self._cache_dir)
 
 
 # ---------- github.com ----------
@@ -490,6 +491,38 @@ def download_to_library(
         if tmp.exists():
             with suppress(OSError):
                 tmp.unlink()
+
+
+CACHE_MAX_AGE_SECONDS = 7 * 24 * 3600  # 7 days
+CACHE_MAX_SIZE_BYTES = 50 * 1024 * 1024  # 50 MB
+
+
+def evict_stale_cache(cache_dir: Path | None) -> None:
+    """Delete cache files older than 7 days and trim total size to 50 MB."""
+    if cache_dir is None or not cache_dir.is_dir():
+        return
+    now = time.time()
+    entries: list[tuple[Path, float, int]] = []
+    for p in cache_dir.iterdir():
+        if not p.is_file() or not p.suffix == ".json":
+            continue
+        try:
+            stat = p.stat()
+        except OSError:
+            continue
+        age = now - stat.st_mtime
+        if age > CACHE_MAX_AGE_SECONDS:
+            with suppress(OSError):
+                p.unlink()
+        else:
+            entries.append((p, stat.st_mtime, stat.st_size))
+    entries.sort(key=lambda e: e[1], reverse=True)
+    total = 0
+    for path, _mtime, size in entries:
+        total += size
+        if total > CACHE_MAX_SIZE_BYTES:
+            with suppress(OSError):
+                path.unlink()
 
 
 def _content_length(r) -> int | None:

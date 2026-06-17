@@ -58,6 +58,7 @@ def _add_conversion_args(parser: argparse.ArgumentParser) -> None:
         help="Quantize grid (default: 1/16). Requires --quantize.",
     )
     parser.add_argument("--stem-separate", action="store_true", help="Run Demucs stem separation before transcription.")
+    parser.add_argument("--multi-channel", action="store_true", help="Render each Demucs stem separately (requires Demucs).")
     parser.add_argument("--no-midi", action="store_true", help="Delete the intermediate .mid file after rendering.")
     parser.add_argument(
         "--onset-threshold",
@@ -229,6 +230,22 @@ def run_cli(argv: list[str] | None = None) -> int:
         except ValueError as exc:
             print(f"error: {exc}", file=sys.stderr)
             return 1
+
+        if getattr(args, "multi_channel", False):
+            from app.core.pipeline import MultiChannelPipeline
+            pipeline = MultiChannelPipeline(config, progress=_progress, log=_log)
+            try:
+                midi_outs, audio_outs = pipeline.run()
+                print()
+                for p in audio_outs:
+                    print(f"Stem: {p}")
+                return 0
+            except CancelledError:
+                print("\nCancelled.", file=sys.stderr)
+                return 130
+            except (PipelineError, Exception) as exc:
+                print(f"\nerror: {exc}", file=sys.stderr)
+                return 1
 
         pipeline = ConversionPipeline(config, progress=_progress, log=_log)
         try:

@@ -10,6 +10,8 @@ from app.core.soundfonts import SF2_EXTS
 RECENT_SOUNDFONTS_LIMIT = 5
 SETTINGS_PATH = Path.home() / ".tunerize" / "settings.json"
 RECENT_SOUNDFONTS_KEY = "recent_soundfonts"
+SCHEMA_VERSION_KEY = "schema_version"
+CURRENT_SCHEMA_VERSION = 1
 
 
 def normalize_path_key(path: Path | str) -> str:
@@ -108,6 +110,7 @@ def load_window_settings(settings_path: Path | None = None) -> dict[str, Any]:
 
 
 def _write_settings(data: dict[str, Any], settings_path: Path | None = None) -> None:
+    data[SCHEMA_VERSION_KEY] = CURRENT_SCHEMA_VERSION
     path = settings_path or SETTINGS_PATH
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
