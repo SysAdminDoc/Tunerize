@@ -1,6 +1,6 @@
 # Tunerize
 
-[![Version](https://img.shields.io/badge/version-0.6.0-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
+[![Version](https://img.shields.io/badge/version-0.7.0-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square&logo=windows)](https://www.microsoft.com/windows)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -27,6 +27,12 @@ One window, one button, no cloud.
 - **Native SF2 creator** — build SoundFonts from WAV samples directly in the app. Import samples, set key ranges, configure loop points and ADSR envelopes, export as `.sf2`. Also one-click export of the built-in chiptune voices (NES/GB/SNES/Sega) as redistributable SF2 files.
 - **Multi-channel output** — split audio into stems (vocals/drums/bass/other) via Demucs and render each independently. One output file per stem.
 - **Real-time monitoring** — hear the audio through your speakers as it renders (requires Qt multimedia).
+- **Waveform visualization** — see the audio shape before converting; piano-roll MIDI preview after conversion.
+- **C64 SID engine** — Commodore 64-style pulse/sawtooth/triangle+ring-mod synthesis with resonant low-pass filter.
+- **SF3 compressed export** — Vorbis-compressed SoundFont output (~10x smaller than SF2).
+- **Transcription tuning** — adjustable onset and frame thresholds for Basic Pitch sensitivity control.
+- **User presets** — save and load custom genre presets for one-click recall of favorite settings.
+- **Settings persistence** — window geometry, render mode, engine, and format choices survive app restarts.
 - **Bundled SoundFont editor** — packaged Windows builds include Polyphone, and **Edit SoundFont…** opens the selected `.sf2` / `.sf3` directly in the editor.
 - **Drag-and-drop input** — Drop supported audio files directly on the window, or use the file picker.
 - **One-click conversion** — Open audio, pick mode, hit Convert. WAV out.
