@@ -1,6 +1,6 @@
 # Tunerize
 
-[![Version](https://img.shields.io/badge/version-0.4.1-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
+[![Version](https://img.shields.io/badge/version-0.6.0-blue?style=flat-square)](https://github.com/SysAdminDoc/Tunerize/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-0078D6?style=flat-square&logo=windows)](https://www.microsoft.com/windows)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
@@ -24,6 +24,10 @@ One window, one button, no cloud.
 - **Online SoundFont browser** — search and install SF2s from public libraries (musical-artifacts.com, GitHub `topic:soundfont`, and Reddit r/soundfonts leads) without leaving the app. License + author shown for every result.
 - **Bring-your-own SoundFonts** — Drop `.sf2` / `.sf3` into `soundfonts/`; Tunerize scans, validates, lists them, and keeps your recent picks at the top.
 - **Preset-aware SoundFont workflow** — Tunerize reads bank/program names from `.sf2` / `.sf3` files, lets you choose a preset, and can render a short preview before conversion.
+- **Native SF2 creator** — build SoundFonts from WAV samples directly in the app. Import samples, set key ranges, configure loop points and ADSR envelopes, export as `.sf2`. Also one-click export of the built-in chiptune voices (NES/GB/SNES/Sega) as redistributable SF2 files.
+- **Multi-channel output** — split audio into stems (vocals/drums/bass/other) via Demucs and render each independently. One output file per stem.
+- **Real-time monitoring** — hear the audio through your speakers as it renders (requires Qt multimedia).
+- **Bundled SoundFont editor** — packaged Windows builds include Polyphone, and **Edit SoundFont…** opens the selected `.sf2` / `.sf3` directly in the editor.
 - **Drag-and-drop input** — Drop supported audio files directly on the window, or use the file picker.
 - **One-click conversion** — Open audio, pick mode, hit Convert. WAV out.
 - **Stem separation (optional)** — Pre-split mixed tracks with Demucs for cleaner transcription on full songs.
@@ -99,13 +103,7 @@ Three options:
 
 ## Roadmap
 
-See [ROADMAP.md](ROADMAP.md). Highlights:
-
-- v0.2 (this release): Online SoundFont browser
-- v0.3: Bundled FluidSynth, Windows binary, FluidR3 onboarding, SNES / Genesis chiptune engines
-- v0.4: Polyphone integration (bundled SF2 editor — GPL, ships in installer)
-- v0.5: Built-in SF2 creator (sample → SF2, native, no external tool)
-- v0.6: MP3/OGG/FLAC export, batch mode, genre presets, CLI mode
+See [ROADMAP.md](ROADMAP.md). All current features have shipped. Remaining blocked items (VST3 host, cross-platform CI, ONNX optimization) are tracked in `Roadmap_Blocked.md`.
 
 ---
 
@@ -118,7 +116,7 @@ python -m app.main           # run the app
 ruff check .                 # lint
 ```
 
-Build a one-file Windows binary (after dev requirements are installed). The build script bundles FluidSynth from PATH, or from `TUNERIZE_FLUIDSYNTH_DIR` when set to the FluidSynth `bin` folder:
+Build a one-file Windows binary (after dev requirements are installed). The build script bundles FluidSynth from PATH or `TUNERIZE_FLUIDSYNTH_DIR`, and Polyphone from PATH or `TUNERIZE_POLYPHONE_DIR`:
 
 ```bash
 python build/build_windows.py
@@ -132,6 +130,7 @@ python build/build_windows.py
 
 - [Spotify Basic Pitch](https://github.com/spotify/basic-pitch) — Apache 2.0
 - [FluidSynth](https://www.fluidsynth.org/) / [pyfluidsynth](https://github.com/nwhitehead/pyfluidsynth) — LGPL 2.1 / Public Domain bindings
+- [Polyphone](https://www.polyphone-soundfonts.com/) — GPL 3.0, bundled as the packaged Windows SoundFont editor
 - [PySide6](https://doc.qt.io/qtforpython/) — LGPL 3.0
 - [Demucs](https://github.com/facebookresearch/demucs) — MIT
 - [pretty_midi](https://github.com/craffel/pretty-midi), [mido](https://github.com/mido/mido), [librosa](https://librosa.org/), [soundfile](https://github.com/bastibe/python-soundfile)
