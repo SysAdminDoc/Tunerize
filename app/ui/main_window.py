@@ -39,7 +39,7 @@ from app import __version__
 from app.core.audio_io import SUPPORTED_INPUT_EXTS
 from app.core.chiptune import ENGINE_GAME_BOY, ENGINE_NES, ENGINE_SEGA, ENGINE_SNES
 from app.core.genre_presets import GenrePreset, get_genre_presets
-from app.core.pipeline import ConversionPipeline, PipelineConfig
+from app.core.pipeline import ConversionPipeline, MultiChannelPipeline, PipelineConfig
 from app.core.recent_soundfonts import load_recent_soundfonts, normalize_path_key, remember_soundfont
 from app.core.renderer import render_preview
 from app.core.runtime import find_polyphone_executable
@@ -146,6 +146,37 @@ class _PreviewWorker(QThread):
             self.finished_err.emit(str(exc))
 
 
+class _MultiChannelWorker(QThread):
+    progress = Signal(str, int)
+    log = Signal(str)
+    finished_ok = Signal(list, list)   # (midi_paths, audio_paths)
+    finished_err = Signal(str)
+
+    def __init__(self, config: PipelineConfig):
+        super().__init__()
+        self._config = config
+        self._cancelled = False
+
+    def cancel(self) -> None:
+        self._cancelled = True
+
+    def run(self) -> None:
+        try:
+            pipeline = MultiChannelPipeline(
+                self._config,
+                progress=lambda s, p: self.progress.emit(s, p),
+                log=lambda m: self.log.emit(m),
+                cancel_check=lambda: self._cancelled,
+            )
+            midi_outs, audio_outs = pipeline.run()
+            self.finished_ok.emit(
+                [str(p) if p else None for p in midi_outs],
+                [str(p) for p in audio_outs],
+            )
+        except Exception as exc:
+            self.finished_err.emit(str(exc))
+
+
 class _CollapsibleBox(QWidget):
     def __init__(self, title: str = "", parent: QWidget | None = None):
         super().__init__(parent)
@@ -192,6 +223,7 @@ class MainWindow(QMainWindow):
         self._soundfont_infos: dict[str, SoundFontInfo] = {}
         self._soundfont_preset_widgets: list[QWidget] = []
         self._batch_worker: _BatchWorker | None = None
+        self._multi_worker: _MultiChannelWorker | None = None
         self.voice_name_labels: list[QLabel] = []
         self.voice_volume_sliders: list[QSlider] = []
         self.voice_value_labels: list[QLabel] = []
@@ -231,6 +263,14 @@ class MainWindow(QMainWindow):
             "Stem-separate first (Demucs) — slower, much better on full songs"
         )
         root.addWidget(self.demucs_check)
+
+        self.multi_channel_check = QCheckBox(
+            "Multi-channel output — render each stem separately (requires Demucs)"
+        )
+        self.multi_channel_check.setToolTip(
+            "Split into vocals/drums/bass/other and render each stem independently."
+        )
+        root.addWidget(self.multi_channel_check)
 
         root.addWidget(self._advanced_section())
         root.addLayout(self._action_row())
@@ -878,6 +918,7 @@ class MainWindow(QMainWindow):
             self.output_btn,
             self.format_combo,
             self.demucs_check,
+            self.multi_channel_check,
             self.sf_refresh_btn,
             self.sf_add_btn,
             self.sf_edit_btn,
@@ -1021,20 +1062,36 @@ class MainWindow(QMainWindow):
         self._set_busy(True)
         self.progress_bar.setValue(0)
         self.log_panel.clear()
+
+        multi_channel = self.multi_channel_check.isChecked()
+        mode_label = "Chiptune" if chiptune_mode else "SoundFont"
         self._log(
-            f"Starting conversion in "
-            f"{'Chiptune' if chiptune_mode else 'SoundFont'} mode..."
+            f"Starting {'multi-channel ' if multi_channel else ''}conversion in "
+            f"{mode_label} mode..."
         )
 
-        self._worker = _Worker(config)
-        self._worker.progress.connect(self._on_progress)
-        self._worker.log.connect(self._log)
-        self._worker.finished_ok.connect(self._on_done_ok)
-        self._worker.finished_err.connect(self._on_done_err)
-        self._worker.start()
+        if multi_channel:
+            self._multi_worker = _MultiChannelWorker(config)
+            self._multi_worker.progress.connect(self._on_progress)
+            self._multi_worker.log.connect(self._log)
+            self._multi_worker.finished_ok.connect(self._on_multi_done_ok)
+            self._multi_worker.finished_err.connect(self._on_done_err)
+            self._multi_worker.start()
+        else:
+            self._worker = _Worker(config)
+            self._worker.progress.connect(self._on_progress)
+            self._worker.log.connect(self._log)
+            self._worker.finished_ok.connect(self._on_done_ok)
+            self._worker.finished_err.connect(self._on_done_err)
+            self._worker.start()
 
     def _on_cancel(self) -> None:
-        if self._batch_worker is not None and self._batch_worker.isRunning():
+        if self._multi_worker is not None and self._multi_worker.isRunning():
+            self._multi_worker.cancel()
+            self.cancel_btn.setEnabled(False)
+            self.stage_label.setText("Cancelling multi-channel...")
+            self._log("Multi-channel cancellation requested...")
+        elif self._batch_worker is not None and self._batch_worker.isRunning():
             self._batch_worker.cancel()
             self.cancel_btn.setEnabled(False)
             self.stage_label.setText("Cancelling batch...")
@@ -1150,6 +1207,18 @@ class MainWindow(QMainWindow):
         self._log(f"WAV written: {wav_path}")
         if midi_path is not None:
             self._log(f"MIDI written: {midi_path}")
+
+    @Slot(list, list)
+    def _on_multi_done_ok(self, midi_paths: list, audio_paths: list) -> None:
+        self._set_busy(False)
+        self.progress_bar.setValue(100)
+        count = len(audio_paths)
+        self.stage_label.setText(f"Done — {count} stem(s) rendered.")
+        for path in audio_paths:
+            self._log(f"Stem output: {path}")
+        for path in midi_paths:
+            if path is not None:
+                self._log(f"Stem MIDI: {path}")
 
     @Slot(str)
     def _on_done_err(self, err_msg: str) -> None:
