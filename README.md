@@ -6,6 +6,16 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
 [![Built with PySide6](https://img.shields.io/badge/UI-PySide6-41CD52?style=flat-square&logo=qt&logoColor=white)](https://doc.qt.io/qtforpython/)
 
+<p align="center">
+  <a href="https://ko-fi.com/X8K126YVER">
+    <img height="42" src="https://storage.ko-fi.com/cdn/kofi2.png?v=3" alt="Buy me a coffee on Ko-fi" />
+  </a>
+</p>
+
+<p align="center">
+  <sub><em>If this project helps you, a coffee helps me keep working on it.</em></sub>
+</p>
+
 **Re-render any audio as chiptune — or through any SoundFont you choose.** Drop in an MP3 or WAV, pick **Chiptune Mode** (built-in retro synths, zero setup) or any `.sf2` (piano, brass, SC-55, anything), and get back a WAV in that style.
 
 Tunerize does the full pipeline locally: audio → MIDI (via Spotify Basic Pitch) → cleaned MIDI → render. Two render paths:
